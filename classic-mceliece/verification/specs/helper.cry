@@ -1,0 +1,11 @@
+module helper where
+
+// Utilities
+(~~>) : {a, b, c} (a -> b) -> (b -> c) -> a -> c
+(~~>) f g = \x -> g (f x)
+infixr 100 ~~>
+
+(<~) : {a, b} (a -> b) -> a -> b
+(<~) f x = f x
+infixr 1 <~
+

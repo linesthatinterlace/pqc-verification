@@ -1,0 +1,758 @@
+module sidh32 where
+
+////
+//// "Small" SIDH Implementation
+////
+
+///
+/// Initialization
+///
+
+///
+/// Types
+///
+
+//
+// Size types.
+//
+
+// p = 214990847
+type p = 214990847
+type e2 = 15
+type e3 = 8
+type msbA = 15 // MSB of 2^^e2
+type msbB = 12 // MSB of 3^^e3
+type Nsk2 = msbA /^ 8 // Number of bytes needed for an A-key.
+type Nsk3 = msbB /^ 8 // Number of bytes needed for a B-key.
+type Np = (width p) /^ 8  // Number of bytes needed for p.
+
+//
+// Data types.
+//
+
+type Fp = [Np*8]  
+
+type Fp2 = {x0 : Fp, x1 : Fp}
+
+mkFP2 : Fp -> Fp -> Fp2
+mkFP2 x0' x1' = {x0 = x0', x1 = x1'}
+
+intToExtFP2 : [64] -> Fp2
+intToExtFP2 x = mkFP2 x0 x1
+    where [x1, x0] = split`{2} x
+
+extToIntFP2 : Fp2 -> [64]
+extToIntFP2 z = z.x1 # z.x0
+
+type EllipticPoint = {x: Fp2, y: Fp2}
+
+mkPoint : Fp2 -> Fp2 -> EllipticPoint
+mkPoint x' y' = {x = x', y = y'}
+
+type MontgomeryCurve = { A: Fp2, B: Fp2, P : EllipticPoint, Q : EllipticPoint}
+mkMC : Fp2 -> Fp2 -> EllipticPoint -> EllipticPoint -> MontgomeryCurve // NO EQUIV
+mkMC A' B' P' Q' = {A = A', B = B', P = P', Q = Q'}
+
+type PublicKey = {xP : Fp2, xQ : Fp2, xR : Fp2}
+
+mkPublicKey : Fp2 -> Fp2 -> Fp2 -> PublicKey
+mkPublicKey xP' xQ' xR' = {xP = xP', xQ = xQ', xR = xR'}
+
+type SecretKeyTwo = [Nsk2*8]
+
+type SecretKeyThree = [Nsk3*8]
+
+type SikeParamsRaw = { cA1 : Fp, cA2 : Fp, cB1 : Fp, cB2 : Fp,
+ xp21 : Fp, xp22 : Fp, yp21 : Fp, yp22 : Fp,
+ xq21 : Fp, xq22 : Fp, yq21 : Fp, yq22 : Fp,
+ xp31 : Fp, xp32 : Fp, yp31 : Fp, yp32 : Fp,
+ xq31 : Fp, xq32 : Fp, yq31 : Fp, yq32 : Fp }
+
+type SikeParams = { EA : MontgomeryCurve, EB : MontgomeryCurve }
+
+mkSikeParams : SikeParamsRaw -> SikeParams
+mkSikeParams raw = { EA = EA', EB = EB' }
+    where   A   = mkFP2 raw.cA1 raw.cA2
+            B   = mkFP2 raw.cB1 raw.cB2
+            xP2 = mkFP2 raw.xp21 raw.xp22
+            yP2 = mkFP2 raw.yp21 raw.yp22
+            xQ2 = mkFP2 raw.xq21 raw.xq22
+            yQ2 = mkFP2 raw.yq21 raw.yq22
+            xP3 = mkFP2 raw.xp31 raw.xp32
+            yP3 = mkFP2 raw.yp31 raw.yp32
+            xQ3 = mkFP2 raw.xq31 raw.xq32
+            yQ3 = mkFP2 raw.yq31 raw.yq32
+            P2  = mkPoint xP2 yP2
+            Q2  = mkPoint xQ2 yQ2
+            P3  = mkPoint xP3 yP3
+            Q3  = mkPoint xQ3 yQ3
+            EA' = mkMC A B P2 Q2
+            EB' = mkMC A B P3 Q3
+
+
+// 
+// ENCODING
+// 
+
+itoos : {n} (fin n) => [n] -> [n /^ 8][8]
+itoos = zext ~~> groupBy`{8} ~~> reverse
+
+ostoi : {n} (fin n) => [n][8] -> [n*8]
+ostoi = reverse ~~> join
+
+fptoos : Fp -> [Np][8]
+fptoos = (\x -> x % modulus) ~~> itoos
+
+
+ostofp : [Np][8] -> (Fp, Bit)
+ostofp os = (a, a>=modulus)
+    where a = ostoi os
+
+fp2toos : Fp2 -> [2*Np][8]
+fp2toos a = os
+    where os = (map fptoos ~~> join) [a.x0, a.x1]
+
+ostofp2 : [2*Np][8] -> (Fp2, Bit)
+ostofp2 os = (mkFP2 x0 x1, p0 /\ p1)
+    where [(x0, p0), (x1, p1)] = map ostofp <~ split`{2} os
+
+pktoos : PublicKey -> [3*2*Np][8]
+pktoos a = os
+    where os = (map fp2toos ~~> join) [a.xP, a.xQ, a.xR]
+
+ostopk : [3*2*Np][8] -> (PublicKey, Bit)
+ostopk os = (mkPublicKey xP xQ xR, pP /\ pQ /\ pR)
+    where [(xP, pP), (xQ, pQ), (xR, pR)] = map ostofp2 <~ split`{3} os
+
+
+///
+/// Parameters
+///
+
+sikeRawParams : SikeParamsRaw
+sikeRawParams = { cA1 = 0x00000006, cA2 = 0x00000000, cB1 = 0x00000001, cB2 = 0x00000000,
+ xp21 = 0x0a7e21eb, xp22 = 0x09ab3afb, yp21 = 0x0366529e, yp22 = 0x00615a32,
+ xq21 = 0x09875b2b, xq22 = 0x076a3372, yq21 = 0x00216b6b, yq22 = 0x0b6465ec,
+ xp31 = 0x09aa9e25, xp32 = 0x00000000, yp31 = 0x040d8353, yp32 = 0x00000000,
+ xq31 = 0x0b96ade2, xq32 = 0x00000000, yq31 = 0x00000000, yq32 = 0x082a1f97 }
+
+modulus = `p : [Np*8] // 0x0cd07fff
+
+///
+/// Finite Fields
+///
+
+//
+// FP
+//
+
+fpAdd : Fp -> Fp -> Fp
+fpAdd a b = drop`{Np*8} <~ (a' + b') % modulus'
+    where   a' = zext`{2*Np*8} a
+            b' = zext`{2*Np*8} b
+            modulus' = zext`{2*Np*8} modulus
+            
+fpCmp : Fp -> Fp -> Bit
+fpCmp a b = (a % modulus) == (b % modulus)
+
+fpIsEven : Fp -> Bit
+fpIsEven x = ~(fpIsBitSet x 0)
+
+fpIsBitSet : Fp -> [32] -> Bit
+fpIsBitSet a b = a ! b
+
+fpInvert : Fp -> Fp
+fpInvert a = fpPow a ( modulus - 2 )
+
+fpMultiply : Fp -> Fp -> Fp
+fpMultiply a b = drop`{Np*8} <~ (a' * b') % modulus'
+    where   a' = zext`{2*Np*8} a
+            b' = zext`{2*Np*8} b
+            modulus' = zext`{2*Np*8} modulus
+
+fpNegative : Fp -> Fp
+fpNegative a = if r == fpZero then fpZero else modulus - r
+    where   r  = (a % modulus)
+
+fpPow : Fp -> Fp -> Fp
+fpPow a n = bs ! 0
+    where   bs = [fpUnity] # [ if bit then fpMultiply a (fpSquare b) else fpSquare b | b <- bs | bit <- n ]
+
+fpSquare : Fp -> Fp
+fpSquare a = fpMultiply a a
+
+fpSubtract : Fp -> Fp -> Fp
+fpSubtract a b = fpAdd a (fpNegative b)
+
+fpUnity : Fp
+fpUnity = zero # 0b1
+
+fpZero : Fp
+fpZero = zero
+
+fpConstant : [32] -> Fp
+fpConstant x = x % modulus
+    
+
+//
+// FP2
+//
+
+fp2Add : Fp2 -> Fp2 -> Fp2
+fp2Add a b = mkFP2 (fpAdd a.x0 b.x0) (fpAdd a.x1 b.x1)
+
+fp2Double : Fp2 -> Fp2
+fp2Double a = fp2Add a a
+
+fp2Cmp : Fp2 -> Fp2 -> Bit
+fp2Cmp a b = fpCmp a.x0 b.x0 /\ fpCmp a.x1 b.x1
+
+fp2Subtract : Fp2 -> Fp2 -> Fp2
+fp2Subtract a b = fp2Add a (fp2Negative b)
+
+fp2Multiply : Fp2 -> Fp2 -> Fp2
+fp2Multiply a b = mkFP2 x0 x1
+    where   mul0    = fpMultiply a.x0 b.x0
+            mul1    = fpMultiply a.x1 b.x1
+            adda    = fpAdd a.x0 a.x1
+            addb    = fpAdd b.x0 b.x1
+            x0      = fpSubtract mul0 mul1
+            mul0'   = fpAdd mul0 mul1
+            mul1'   = fpMultiply adda addb
+            x1      = fpSubtract mul1' mul0'
+
+fp2Square : Fp2 -> Fp2
+fp2Square a = fp2Multiply a a
+
+fp2Invert : Fp2 -> Fp2
+fp2Invert a =   mkFP2 x0 x1
+        where   mul0    = fpMultiply a.x0 a.x0
+                mul1    = fpMultiply a.x1 a.x1
+                mul0'   = fpAdd mul0 mul1
+                mul0''  = fpInvert mul0'
+                mul1'   = fpNegative a.x1
+                x0 = fpMultiply a.x0 mul0''
+                x1 = fpMultiply mul1' mul0''
+            
+fp2Negative : Fp2 -> Fp2
+fp2Negative a = mkFP2 (fpNegative a.x0) (fpNegative a.x1)
+
+fp2Sqrt : Fp2 -> Fp2
+fp2Sqrt a = mkFP2 x0 x1
+                where   t0          = fpSquare a.x0
+                        t1          = fpSquare a.x1
+                        t2          = fpAdd t0 t1
+                        p14         = modulus + 1 >> 2 
+                        t3          = fpPow t2 p14
+                        t4          = fpAdd a.x0 t3
+                        t5          = if (fpCmp t4 fpZero) then fpSubtract t4 (fpAdd t3 t3) else t4
+                        t6          = fpInvert 2
+                        t7          = fpMultiply t5 t6
+                        t8          = fpPow t7 p14
+                        t9          = fpInvert t8
+                        t10         = fpMultiply t9 a.x1
+                        t11         = fpMultiply t10 t6
+                        (t12, t13)  = if fpCmp (fpSquare t8) t7 then (t8, t11) else (t11, t8)
+                        (x0, x1)    = if (~fpIsEven t12) \/ ( (fpCmp t12 fpZero) /\ (~fpIsEven t13) ) then (fpNegative t12, fpNegative t13) else (t12, t13)
+
+fp2Unity : Fp2
+fp2Unity = mkFP2 fpUnity fpZero
+
+fp2Zero : Fp2
+fp2Zero = mkFP2 fpZero fpZero
+
+///
+/// Curve Operations
+///
+
+//
+// Elliptic Points and (Montgomery) curve data types.
+//
+
+pointAtInfinity : EllipticPoint
+pointAtInfinity = mkPoint fp2Zero fp2Unity
+
+isInfinite : EllipticPoint -> Bit
+isInfinite P = (fp2Cmp P.x pointAtInfinity.x) /\ (fp2Cmp P.y pointAtInfinity.y)
+
+//
+// Point and curve operations.
+//
+
+// Algorithm 25
+xDBL : MontgomeryCurve -> EllipticPoint -> EllipticPoint
+xDBL C P =  if isInfinite P
+            then pointAtInfinity
+            |  fp2Cmp P.y (mkFP2 fpZero fpZero)
+            then pointAtInfinity
+            else mkPoint x2P y2P
+                where   xP  = P.x
+                        yP  = P.y
+                        t3  = fp2Square xP
+                        t4  = fp2Double t3
+                        t5  = fp2Unity
+                        t6  = fp2Add t3 t4
+                        t7  = fp2Multiply C.A xP
+                        t8  = fp2Double t7
+                        t9  = fp2Add t6 t8
+                        t10 = fp2Add t9 t5
+                        t11 = fp2Multiply C.B yP
+                        t12 = fp2Double t11
+                        t13 = fp2Invert t12
+                        t14 = fp2Multiply t10 t13
+                        t15 = fp2Square t14
+                        t16 = fp2Multiply C.B t15
+                        t17 = fp2Subtract t16 C.A
+                        t18 = fp2Subtract t17 xP
+                        t19 = fp2Subtract t18 xP
+                        t20 = fp2Multiply t14 t15
+                        t21 = fp2Multiply C.B t20
+                        t22 = fp2Add t21 yP
+                        t23 = fp2Double xP
+                        t24 = fp2Add t23 xP
+                        t25 = fp2Add t24 C.A
+                        t26 = fp2Multiply t25 t14
+                        t27 = fp2Subtract t26 t22
+                        x2P = t19
+                        y2P = t27
+
+// Algorithm 26
+xDBLe : {n} (fin n) => [n] -> MontgomeryCurve -> EllipticPoint -> EllipticPoint
+xDBLe e C P = ys @ e
+                where ys = iterate (xDBL C) P
+
+
+// Algorithm 27
+xADD : MontgomeryCurve -> EllipticPoint -> EllipticPoint -> EllipticPoint
+xADD C P Q =    if isInfinite P
+                then Q
+                |  isInfinite Q
+                then P
+                | (fp2Cmp P.x Q.x) /\ (fp2Cmp P.y Q.y)
+                then xDBL C P
+                | (fp2Cmp P.x Q.x) /\ (fp2Cmp P.y (fp2Negative Q.y))
+                then pointAtInfinity
+                else mkPoint xPQ yPQ
+                    where   xP  = P.x
+                            yP  = P.y
+                            xQ  = Q.x
+                            yQ  = Q.y
+                            t9  = fp2Subtract yQ yP
+                            t10 = fp2Subtract xQ xP
+                            t11 = fp2Invert t10
+                            t12 = fp2Multiply t9 t11
+                            t13 = fp2Square t12
+                            t14 = fp2Double xP
+                            t15 = fp2Add t14 xQ
+                            t16 = fp2Add t15 C.A
+                            t17 = fp2Multiply t16 t12
+                            t18 = fp2Multiply t12 t13
+                            t19 = fp2Multiply C.B t18
+                            t20 = fp2Add t19 yP
+                            t21 = fp2Subtract t17 t20
+                            t22 = fp2Multiply C.B t13
+                            t23 = fp2Subtract t22 C.A
+                            t24 = fp2Subtract t23 xP
+                            t25 = fp2Subtract t24 xQ
+                            xPQ = t25
+                            yPQ = t21
+
+
+
+// Algorithm 28
+xTPL : MontgomeryCurve -> EllipticPoint -> EllipticPoint
+xTPL C P = xADD C P (xDBL C P)
+
+// Algorithm 29
+xTPLe : {n} (fin n) => [n] -> MontgomeryCurve -> EllipticPoint -> EllipticPoint
+xTPLe e C P  = ys @ e
+                where ys = iterate (xTPL C) P
+
+xNEGATE : EllipticPoint -> EllipticPoint
+xNEGATE P = {P | y = fp2Negative P.y }
+
+
+// Algorithm 30
+double_and_add : {msb, n} (msb <= n, fin n) => MontgomeryCurve -> EllipticPoint -> [n] -> EllipticPoint
+double_and_add C P k = bs ! 0
+        where   bs = [pointAtInfinity] # [ if bit then xADD C P (xDBL C b) else xDBL C b | b <- bs | bit <- k' ]
+                k' = drop`{n - msb} k
+
+// Algorithm 31
+j_inv : MontgomeryCurve ->  Fp2
+j_inv C = j
+    where   t1  = fp2Square C.A
+            t2  = fp2Add (fp2Double fp2Unity) fp2Unity
+            t3  = fp2Subtract t1 t2
+            t4  = fp2Square t3
+            t5  = fp2Multiply t3 t4
+            t6  = fp2Double t5
+            t7  = fp2Double t6
+            t8  = fp2Double t7
+            t9  = fp2Double t8
+            t10 = fp2Double t9
+            t11 = fp2Double t10
+            t12 = fp2Double t11
+            t13 = fp2Double t12
+            t14 = fp2Double ~~> fp2Double <~ fp2Unity
+            t15 = fp2Subtract t1 t14
+            t16 = fp2Invert t15
+            t17 = fp2Multiply t13 t16
+            j   = t17
+
+//
+// Isogenies.
+//
+
+// Algorithm 32
+curve_2_iso : EllipticPoint -> MontgomeryCurve -> MontgomeryCurve
+curve_2_iso T C = {C | A = a, B = b}
+    where   t1  = fp2Square T.x
+            t2  = fp2Double t1
+            t3  = fp2Subtract fp2Unity t2
+            t4  = fp2Double t3
+            t5  = fp2Multiply T.x C.B
+            a  = t4
+            b  = t5
+                            
+// a' = 2*(1-2*x2^2)
+// b' = x2*b
+          
+         
+// Algorithm 33
+eval_2_iso : EllipticPoint -> EllipticPoint -> EllipticPoint
+eval_2_iso T Q = Q'
+    where   (xQ, yQ) = (Q.x, Q.y)
+            t1  = fp2Multiply xQ T.x
+            t2  = fp2Multiply xQ t1
+            t3  = fp2Multiply t1 T.x
+            t4  = fp2Double t3
+            t5  = fp2Subtract t2 t4
+            t6  = fp2Add t5 T.x
+            t7  = fp2Multiply yQ t6
+            t8  = fp2Subtract t2 xQ
+            t9  = fp2Subtract xQ T.x
+            t10 = fp2Invert t9
+            t11 = fp2Multiply t8 t10
+            t12 = fp2Square t10
+            t13 = fp2Multiply t7 t12
+            xQ' = t11
+            yQ' = t13
+            Q'  = mkPoint xQ' yQ'
+
+// xQ':=(xQ^2*x2-xQ)/(xQ-x2);
+// yQ':=yQ*(xQ^2*x2-2*xQ*x2^2+x2)/(xQ-x2)^2;
+
+// Algorithm 34
+curve_4_iso : EllipticPoint -> MontgomeryCurve -> MontgomeryCurve
+curve_4_iso T C = {C | A = a, B = b}
+    where   t1  = fp2Square T.x
+            t2  = fp2Square t1
+            t3  = fp2Double t2
+            t4  = fp2Double t3
+            t5  = mkFP2 2 0
+            t6  = fp2Subtract t4 t5
+            t7  = fp2Multiply T.x t1
+            t8  = fp2Add t7 T.x
+            t9  = fp2Multiply t8 C.B
+            t10 = fp2Invert t5
+            t11 = fp2Negative t10
+            t12 = fp2Multiply t11 t9
+            a  = t6
+            b  = t12
+
+// a':=4*x4^4-2;
+// b':== -(1/2)*(x4^3+x4)*b;
+
+// Algorithm 35
+eval_4_iso : EllipticPoint -> EllipticPoint -> EllipticPoint
+eval_4_iso T Q = Q'
+    where   (xQ, yQ) = (Q.x, Q.y)
+            t1  = fp2Square xQ
+            t2  = fp2Square t1
+            t3  = fp2Square T.x
+            t4  = fp2Multiply t2 t3
+            t5  = fp2Add t2 t4
+            t6  = fp2Multiply t1 t3
+            t7  = fp2Double t6
+            t8  = fp2Double t7
+            t9  = fp2Double t8
+            t10 = fp2Add t7 t9
+            t11 = fp2Add t5 t10
+            t12 = fp2Square t3
+            t13 = fp2Multiply t1 t12
+            t14 = fp2Double t13
+            t15 = fp2Add t11 t14
+            t16 = fp2Multiply t1 xQ
+            t17 = fp2Multiply T.x t3
+            t18 = fp2Multiply t16 t17
+            t19 = fp2Double t18
+            t20 = fp2Double t19
+            t21 = fp2Subtract t15 t20
+            t22 = fp2Multiply t16 T.x 
+            t23 = fp2Double t22
+            t24 = fp2Double t23
+            t25 = fp2Subtract t21 t24
+            t26 = fp2Multiply xQ t17
+            t27 = fp2Double t26
+            t28 = fp2Double t27
+            t29 = fp2Subtract t25 t28
+            t30 = fp2Add t29 t3
+            t31 = fp2Add t30 fp2Unity
+            t32 = fp2Multiply xQ T.x
+            t33 = fp2Subtract t32 fp2Unity
+            t34 = fp2Double t32
+            t35 = fp2Double t34
+            t36 = fp2Subtract t31 t35
+            t37 = fp2Multiply t33 t36
+            t38 = fp2Multiply t3 t37
+            t39 = fp2Multiply yQ t38
+            t40 = fp2Double t39
+            t41 = fp2Negative t40
+            t42 = fp2Subtract t34 t3
+            t43 = fp2Subtract t42 fp2Unity
+            t44 = fp2Subtract xQ T.x
+            t45 = fp2Multiply t44 t43
+            t46 = fp2Square t45
+            t47 = fp2Multiply t46 t44
+            t48 = fp2Invert t47
+            t49 = fp2Multiply t41 t48
+            t50 = fp2Multiply t45 t44
+            t51 = fp2Invert t50
+            t52 = fp2Square t33
+            t53 = fp2Multiply t51 t52
+            t54 = fp2Multiply xQ t53
+            t55 = fp2Multiply xQ t3
+            t56 = fp2Add t55 xQ
+            t57 = fp2Double T.x
+            t58 = fp2Subtract t56 t57
+            t59 = fp2Negative t58
+            t60 = fp2Multiply t54 t59
+            xQ' = t60
+            yQ' = t49
+            Q'  = mkPoint xQ' yQ'
+
+// xx:=x(-x*x4^2-x+2*x4)*C*C/(B*B*A);
+// yy:=y*x4^2*C*D/(B*B*B*A*A);
+
+// Algorithm 36
+curve_3_iso : EllipticPoint -> MontgomeryCurve -> MontgomeryCurve
+curve_3_iso T C = {C | A = a, B = b}
+    where   t1  = fp2Square T.x
+            t2  = fp2Multiply C.B t1
+            t3  = fp2Double t1
+            t4  = fp2Double t3
+            t5  = fp2Add t3 t4
+            t6  = fp2Double <~ fp2Add (fp2Double fp2Unity) fp2Unity
+            t7  = fp2Subtract t5 t6
+            t8  = fp2Multiply C.A T.x
+            t9  = fp2Subtract t8 t7
+            t10 = fp2Multiply t9 T.x
+            a  = t10
+            b  = t2
+
+// a':=(a*x3-6*x3^2+6)*x3;
+// b':=b*x3^2;
+
+// Algorithm 37
+eval_3_iso : EllipticPoint -> EllipticPoint -> EllipticPoint
+eval_3_iso T Q = Q'
+    where   x3  = T.x
+            (xQ, yQ) = (Q.x, Q.y)
+            t1  = fp2Square xQ
+            t2  = fp2Multiply t1 T.x
+            t3  = fp2Square T.x
+            t4  = fp2Multiply xQ t3
+            t5  = fp2Double t4
+            t6  = fp2Add t4 t5
+            t7  = fp2Subtract t2 t6
+            t8  = fp2Add t7 xQ
+            t9  = fp2Add t8 T.x
+            t10 = fp2Subtract xQ T.x
+            t11 = fp2Invert t10
+            t12 = fp2Square t11
+            t13 = fp2Multiply t11 t12
+            t14 = fp2Multiply xQ T.x
+            t15 = fp2Subtract t14 fp2Unity
+            t16 = fp2Multiply t15 t9
+            t17 = fp2Multiply t16 t13
+            t18 = fp2Square t15
+            t19 = fp2Multiply t18 t12
+            t20 = fp2Multiply xQ t19
+            t21 = fp2Multiply yQ t17
+            xQ' = t20
+            yQ' = t21
+            Q'  = mkPoint xQ' yQ'
+
+// xQ':=xQ*(xQ*x3-1)^2/(xQ-x3)^2;
+// yQ':=yQ*(xQ*x3-1)*(xQ^2*x3-3*xQ*x3^2+xQ+x3)/(xQ-x3)^3;
+
+// Algorithm 38
+iso_2_e : {e} (fin e, e >= 4) => EllipticPoint -> MontgomeryCurve -> MontgomeryCurve
+iso_2_e S' C' = C''
+    where   init = {S = S', C = C'}
+            init' = if (`e ) % (2 : [width e]) == 0 then init else iso_2_e_odd_step`{width e} (`e - 1) init
+            ms = reverse [0, 2 .. e - 2]
+            ys = [init'] # [ iso_2_e_step`{width e} m y | m <- ms | y <- ys ]
+            final_y = ys ! 0
+            C'' = final_y.C
+
+iso_2_e_odd_step : {m} (fin m) => [m] -> {S: EllipticPoint, C: MontgomeryCurve} -> { S: EllipticPoint, C: MontgomeryCurve } // NO EQUIV
+iso_2_e_odd_step k y = {S = S', C = C''}
+    where   T   = xDBLe k y.C y.S
+            S'  = eval_2_iso T y.S
+            C'  = curve_2_iso T y.C
+            P'  = if ~isInfinite C'.P then eval_2_iso T C'.P else P'
+            Q'  = if ~isInfinite C'.Q then eval_2_iso T C'.Q else Q'
+            C'' = {C' | P = P', Q = Q'}
+
+
+iso_2_e_step : {m} (fin m) => [m] -> {S: EllipticPoint, C: MontgomeryCurve} -> { S: EllipticPoint, C: MontgomeryCurve } // NO EQUIV
+iso_2_e_step k y = {S = S', C = C''}
+    where   T   = xDBLe k y.C y.S
+            S'  = eval_4_iso T y.S
+            C'  = curve_4_iso T y.C
+            P'  = if ~isInfinite C'.P then eval_4_iso T C'.P else P'
+            Q'  = if ~isInfinite C'.Q then eval_4_iso T C'.Q else Q'
+            C'' = {C' | P = P', Q = Q'}
+
+
+// Algorithm 39
+iso_3_e : {e} (fin e, e >= 1) => EllipticPoint -> MontgomeryCurve -> MontgomeryCurve
+iso_3_e S' C' = C''
+    where   init = {S = S', C = C'}
+            ms = reverse [0 .. e - 1]
+            ys = [init] # [ iso_3_e_step`{width e} m y | m <- ms | y <- ys ]
+            final_y = ys ! 0
+            C'' = final_y.C
+
+iso_3_e_step : {m} (fin m) => [m] -> {S: EllipticPoint, C: MontgomeryCurve} -> { S: EllipticPoint, C: MontgomeryCurve }
+iso_3_e_step k y = {S = S', C = C''}
+    where   T   = xTPLe k y.C y.S
+            S'  = eval_3_iso T y.S
+            C'  = curve_3_iso T y.C
+            P'  = if ~isInfinite C'.P then eval_3_iso T C'.P else P'
+            Q'  = if ~isInfinite C'.Q then eval_3_iso T C'.Q else Q'
+            C'' = {C' | P = P', Q = Q'}
+            
+// Algorithm 10
+get_A : PublicKey -> Fp2
+get_A pk = A
+    where   t1  = fp2Add pk.xP pk.xQ
+            t2  = fp2Multiply pk.xP pk.xQ
+            t3  = fp2Multiply pk.xR t1
+            t4  = fp2Add t3 t2
+            t5  = fp2Multiply t2 pk.xR
+            t6  = fp2Subtract t4 fp2Unity
+            t7  = fp2Double t5
+            t8  = fp2Add t1 pk.xR
+            t9  = fp2Double t7
+            t10 = fp2Square t6
+            t11 = fp2Invert t9
+            t12 = fp2Multiply t10 t11
+            t13 = fp2Subtract t12 t8
+            A   = t13
+
+// Algorithm 40
+get_xR : MontgomeryCurve -> PublicKey
+get_xR C = mkPublicKey C.P.x C.Q.x R.x
+    where   R = xADD C C.P (xNEGATE C.Q)
+
+// Algorithm 41
+get_yP_yQ_A_B : PublicKey -> MontgomeryCurve
+get_yP_yQ_A_B pk = C'
+    where   t1  = get_A pk
+            t2  = fp2Unity
+            t3  = fp2Square pk.xP
+            t4  = fp2Multiply pk.xP t3
+            t5  = fp2Multiply t1 t3
+            t6  = fp2Add t4 t5
+            t7  = fp2Add t6 pk.xP
+            t8  = fp2Sqrt t7
+            t9  = fp2Square pk.xQ
+            t10 = fp2Multiply pk.xQ t9
+            t11 = fp2Multiply t1 t9
+            t12 = fp2Add t10 t11
+            t13 = fp2Add t12 pk.xQ
+            t14 = fp2Sqrt t13        
+            yP  = t8
+            yQ  = t14
+            P   = mkPoint pk.xP yP
+            Q   = mkPoint pk.xQ yQ
+            C   = mkMC t1 t2 P Q
+            xR' = (get_xR C).xR
+            Q' = if ~( fp2Cmp xR' pk.xR ) then xNEGATE Q else Q
+            C'  = {C | Q = Q'}
+
+//
+// isogen_l and isoex_l for l in {2, 3}
+//
+
+// Algorithm 42
+isogen_2 : SikeParams -> SecretKeyTwo -> PublicKey
+isogen_2 params sk2 = pk2
+    where   C       = params.EA
+            pkInt   = params.EB
+            S       = xADD C C.P (double_and_add`{msbA} C C.Q sk2 )
+            C'      = iso_2_e`{e2} S pkInt
+            pk2     = get_xR C'
+
+// Algorithm 43
+isogen_3 : SikeParams -> SecretKeyThree -> PublicKey
+isogen_3 params sk3 = pk3
+    where   C       = params.EB
+            pkInt   = params.EA
+            S       = xADD C C.P (double_and_add`{msbB} C C.Q sk3 )
+            C'      = iso_3_e`{e3} S pkInt
+            pk3     = get_xR C'
+
+// Algorithm 44
+isoex_2 : PublicKey -> SecretKeyTwo -> Fp2
+isoex_2 pk3 sk2 = j2
+    where   C   = get_yP_yQ_A_B pk3
+            S   = xADD C C.P (double_and_add`{msbA} C C.Q sk2)
+            C'  = { C | P = pointAtInfinity, Q = pointAtInfinity }
+            C'' = iso_2_e`{e2} S C'
+            j2  = j_inv C''
+
+
+// Algorithm 45
+isoex_3 : PublicKey -> SecretKeyThree -> Fp2
+isoex_3 pk2 sk3 = j3
+    where   C   = get_yP_yQ_A_B pk2
+            S   = xADD C C.P (double_and_add`{msbB} C C.Q sk3)
+            C'  = { C | P = pointAtInfinity, Q = pointAtInfinity }
+            C'' = iso_3_e`{e3} S C'
+            j3  = j_inv C''
+
+// TESTS
+
+gen3ex2 : SecretKeyTwo -> SecretKeyThree -> Fp2
+gen3ex2 sk2 sk3 = isoex_2 (isogen_3 params sk3) sk2
+    where params = mkSikeParams sikeRawParams
+
+gen2ex3 : SecretKeyTwo -> SecretKeyThree -> Fp2
+gen2ex3 sk2 sk3 = isoex_3 (isogen_2 params sk2) sk3
+    where params = mkSikeParams sikeRawParams
+
+property secretShared a b = gen3ex2 a b == gen2ex3 a b
+
+
+///
+/// Miscellaneous
+///
+
+//
+// Functional programming operators.
+//
+
+(~~>) : {a, b, c} (a -> b) -> (b -> c) -> a -> c
+(~~>) f g = \x -> g (f x)
+infixr 100 ~~>
+
+(<~) : {a, b} (a -> b) -> a -> b
+(<~) f x = f x
+infixr 1 <~
+
+loud : {a} a -> a
+loud a = trace "SHOUTING" a a

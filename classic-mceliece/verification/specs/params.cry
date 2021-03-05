@@ -1,0 +1,15 @@
+// Params
+module params where
+
+param_f = <| x^^12 + x^^3 + 1 |>
+GFBITS = 12
+type GFBITS_t = 12
+type gf_t = [16]
+
+param_F = [0x0001] # zero # [0x0001, zero, 0x0001, 0x0010] : [65]gf_t
+SYS_T = 64
+type SYS_T_t = 64
+type GF_t = [SYS_T_t]gf_t
+
+type SYS_N_t = 3488
+SYS_N = 3488
