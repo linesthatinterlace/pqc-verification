@@ -1,0 +1,24 @@
+// mceliece348864
+
+module util where
+
+import helper
+import params
+
+store_gf : gf_t -> [2][8]
+store_gf = split ~~> reverse
+
+load_gf : [2][8] -> gf_t
+load_gf = reverse ~~> join ~~> gf_mask
+
+load4 : [4][8] -> [32]
+load4 = reverse ~~> join
+
+load8 : [8][8] -> [64]
+load8 = reverse ~~> join
+
+store8 : [64] -> [8][8]
+store8 = split ~~> reverse
+
+bitrev : gf_t -> gf_t
+bitrev = drop`{4} ~~> reverse ~~> zext

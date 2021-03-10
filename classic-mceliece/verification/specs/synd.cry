@@ -1,0 +1,7 @@
+// mceliece348864
+
+module synd where
+
+import helper
+import params
+import gf

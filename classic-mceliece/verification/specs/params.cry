@@ -1,3 +1,5 @@
+//mceliece348864
+
 // Params
 module params where
 
@@ -5,6 +7,13 @@ param_f = <| x^^12 + x^^3 + 1 |>
 GFBITS = 12
 type GFBITS_t = 12
 type gf_t = [16]
+GFMASK = ((1 << GFBITS) - 1)
+
+gf_valid : gf_t -> Bit
+gf_valid x = x <= GFMASK
+
+gf_mask : {n} (fin n, n >= 16) => [n] -> gf_t
+gf_mask x = drop x && GFMASK
 
 param_F = [0x0001] # zero # [0x0001, zero, 0x0001, 0x0010] : [65]gf_t
 SYS_T = 64

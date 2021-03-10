@@ -36,7 +36,7 @@ gf gf_mul(gf in0, gf in1)
 
 	for (i = 1; i < GFBITS; i++)
 		tmp ^= (t0 * (t1 & (1 << i)));
-
+  
 	t = tmp & 0x7FC000;
 	tmp ^= t >> 9;
 	tmp ^= t >> 12;
@@ -124,18 +124,14 @@ void GF_mul(gf *out, gf *in0, gf *in1)
 	for (i = 0; i < SYS_T; i++)
 		for (j = 0; j < SYS_T; j++)
 			prod[i+j] ^= gf_mul(in0[i], in1[j]);
-
-	
-  /*
-  Commented out while I make sure I can verify the first part at least.
-
+  
 	for (i = (SYS_T-1)*2; i >= SYS_T; i--)
 	{
 		prod[i - SYS_T + 3] ^= prod[i];
 		prod[i - SYS_T + 1] ^= prod[i];
 		prod[i - SYS_T + 0] ^= gf_mul(prod[i], (gf) 2);
 	}
-  */
+  
 	for (i = 0; i < SYS_T; i++)
 		out[i] = prod[i];
 }
