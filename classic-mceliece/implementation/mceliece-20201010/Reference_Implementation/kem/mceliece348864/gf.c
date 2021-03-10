@@ -11,7 +11,7 @@ gf gf_iszero(gf a)
 	uint32_t t = a;
 
 	t -= 1;
-	t >>= 19;
+	t >>= 20;
 
 	return (gf) t;
 }
