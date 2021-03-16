@@ -5,3 +5,33 @@ module synd where
 import helper
 import params
 import gf
+import root
+
+synd : [SYS_T_t + 1]gf_t -> [SYS_N_t]gf_t -> [SYS_N_t/8][8] -> [2*SYS_T_t]gf_t
+synd f L r = reverse <~ synd_outer_loop f L (loadbytes r) zero
+
+synd_outer_loop : [SYS_T_t + 1]gf_t -> [SYS_N_t]gf_t -> [SYS_N_t] -> [2*SYS_T_t]gf_t -> [2*SYS_T_t]gf_t
+synd_outer_loop f L r state = foldr (synd_outer_loop_body f L r) state [0 .. SYS_N_t - 1]
+
+synd_outer_loop_body : {ix} (Integral ix, Literal 8 ix) => [SYS_T_t + 1]gf_t -> [SYS_N_t]gf_t -> [SYS_N_t] -> ix -> [2*SYS_T_t]gf_t -> [2*SYS_T_t]gf_t
+synd_outer_loop_body f L r i state = (synd_inner_loop c li {e_inv = e_inv_pre, o = state}).o
+  where c = r ! i
+        li = (L@i)
+        e = eval f li
+        e_inv_pre = gf_inv (gf_mul e e)
+      
+synd_inner_loop : Bit -> gf_t -> {e_inv : gf_t, o : [2*SYS_T_t]gf_t} -> {e_inv : gf_t, o : [2*SYS_T_t]gf_t}
+synd_inner_loop c li state = foldr (synd_inner_loop_body c li) state [0 .. 2*SYS_T_t - 1]
+
+synd_inner_loop_body : {ix} (Integral ix) => Bit -> gf_t -> ix -> {e_inv : gf_t, o : [2*SYS_T_t]gf_t} -> {e_inv : gf_t, o : [2*SYS_T_t]gf_t}
+synd_inner_loop_body c li j state = {e_inv = e_inv_post, o = o_post}
+  where o_post = if c then update state.o j (gf_add ((state.o)@j) state.e_inv) else state.o
+        e_inv_post = gf_mul state.e_inv li
+
+property c_f_p b i = c_f_1 b i == c_f_2 b i
+
+c_f_1 : [SYS_N_t/8][8] -> [width SYS_N_t] -> gf_t
+c_f_1 r i = if (i < SYS_N) then zext (((r@(i/8)) >> (i%8)) && 1) else zero
+
+c_f_2 : [SYS_N_t/8][8] -> [width SYS_N_t] -> gf_t
+c_f_2 r i = if (i < SYS_N) then zext [(loadbytes r) ! i] else zero

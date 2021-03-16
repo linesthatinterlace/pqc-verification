@@ -6,19 +6,19 @@ import helper
 import params
 
 store_gf : gf_t -> [2][8]
-store_gf = split ~~> reverse
+store_gf = storebytes
 
 load_gf : [2][8] -> gf_t
-load_gf = reverse ~~> join ~~> gf_mask
+load_gf = loadbytes ~~> gf_mask
 
 load4 : [4][8] -> [32]
-load4 = reverse ~~> join
+load4 = loadbytes
 
 load8 : [8][8] -> [64]
-load8 = reverse ~~> join
+load8 = loadbytes
 
 store8 : [64] -> [8][8]
-store8 = split ~~> reverse
+store8 = storebytes
 
 bitrev : gf_t -> gf_t
 bitrev = drop`{4} ~~> reverse ~~> zext

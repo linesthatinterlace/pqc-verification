@@ -11,3 +11,9 @@ infixr 1 <~
 
 xor_update : {n, a, b} (Integral a, Logic b) => [n]b -> a -> b -> [n]b
 xor_update z ix a = update z ix ((z@ix) ^ a)
+
+loadbytes : {n} (fin n) => [n][8] -> [n*8]
+loadbytes = reverse ~~> join
+
+storebytes : {n} (fin n) => [n*8] -> [n][8]
+storebytes = split ~~> reverse
