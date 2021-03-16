@@ -86,9 +86,21 @@ property inv_equiv x = (gf_valid x) ==> (gf_inv x == gf_inv' x)
 GF_valid : GF_t -> Bit
 GF_valid = all gf_valid
 
-GF_mul_no_reduce : GF_t -> GF_t -> [2*SYS_T_t - 1]gf_t
-GF_mul_no_reduce in0 in1 = last zs
-  where zs = [zero] # [update z (i + j) ( ( z @ ( i + j ) ) ^ ( gf_mul (in0 @ i) (in1 @ j) ) ) | z <- zs | j <- [0..SYS_T_t-1] , i <- [0..SYS_T_t-1] ]
+GF_mul_pre_reduce : GF_t -> GF_t -> [2*SYS_T_t - 1]gf_t
+GF_mul_pre_reduce in0 in1 = last zs
+  where zs = [zero] # [update_ij z i j | z <- zs | j <- [0..SYS_T_t-1] , i <- [0..SYS_T_t-1] ]
+        update_ij z i j = xor_update z (i + j) ( gf_mul (in0@i) (in1@j) )
+
+GF_mul_reduce : [2*SYS_T_t - 1]gf_t -> GF_t
+GF_mul_reduce in = take <~ last zs
+  where zs = [in] # [update_i z i | z <- zs | i <- [2*(SYS_T_t-1), 2*(SYS_T_t-1) - 1 .. SYS_T_t] ]
+        update_i z i = u3
+                where u1 = xor_update z (i - SYS_T + 3) (z@i)
+                      u2 = xor_update u1 (i - SYS_T + 1) (u1@i)
+                      u3 = xor_update u2 (i - SYS_T + 0) (gf_mul (u2@i) 0x0002)
+
+GF_mul : GF_t -> GF_t -> GF_t
+GF_mul in0 in1 = GF_mul_reduce <~ GF_mul_pre_reduce in0 in1
 
 // I could use gf_add here, but it would mean editing the C code.
 

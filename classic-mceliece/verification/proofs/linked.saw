@@ -85,7 +85,6 @@ let gf_sq_spec = do {
   x <- llvm_fresh_var "in" gf_type;
 
   // Require that input(s) fit inside GBITS (to ensure correctness).
-  llvm_precond {{ gf_valid x }};
 
   // Run function.
   llvm_execute_func [llvm_term x];
@@ -137,22 +136,68 @@ let gf_frac_spec = do {
   llvm_return (llvm_term result);
 };
 
+let GF_mul_eq_spec = do {
+  // Initialise variable(s).
+  (x, px) <- ptr_to_fresh_readonly "in0" (llvm_array SYS_T gf_type);
+  (y, py) <- ptr_to_fresh_readonly "in1" (llvm_array SYS_T gf_type);
+
+  // Run function.
+  llvm_execute_func [px, py];
+
+  // Result is equivalent to Cryptol function.
+  llvm_return (llvm_term {{0x0001}});
+};
+
 let GF_mul_spec = do {
   // Initialise variable(s).
   po <- llvm_alloc (llvm_array SYS_T gf_type);
   (x, px) <- ptr_to_fresh_readonly "in0" (llvm_array SYS_T gf_type);
   (y, py) <- ptr_to_fresh_readonly "in1" (llvm_array SYS_T gf_type);
 
-  // Require that input(s) fit inside GBITS (to ensure correctness).
-  llvm_precond {{ all gf_valid x }};
-  llvm_precond {{ all gf_valid y }};
   // Run function.
   llvm_execute_func [po, px, py];
-
+  let test = 0; //0, 1, 2, 45 (but long), 50, 57-63
   // Result is equivalent to Cryptol function.
-  llvm_points_to po (llvm_term {{ take`{SYS_T} ( GF_mul_no_reduce x y ) }});
+  llvm_points_to (llvm_elem po test) (llvm_term {{ (GF_mul x y) @ `test }});
 };
 
+let GF_mul_pre_reduce_spec = do {
+  // Initialise variable(s).
+  po <- llvm_alloc (llvm_array 127 gf_type);
+  (x, px) <- ptr_to_fresh_readonly "in0" (llvm_array SYS_T gf_type);
+  (y, py) <- ptr_to_fresh_readonly "in1" (llvm_array SYS_T gf_type);
+
+  // Run function.
+  llvm_execute_func [po, px, py];
+  let test = 1;
+  // Result is equivalent to Cryptol function.
+  llvm_points_to po (llvm_term {{ (GF_mul_pre_reduce x y) }});
+};
+
+let GF_mul_reduce_spec = do {
+  // Initialise variable(s).
+  po <- llvm_alloc (llvm_array SYS_T gf_type);
+  (in_var, pin) <- ptr_to_fresh_readonly "in" (llvm_array 127 gf_type);
+
+  // Run function.
+  llvm_execute_func [po, pin];
+  let test = 0; //0, 1, 2, 45 (but long), 50, 57-63
+  // Result is equivalent to Cryptol function.
+  llvm_points_to po (llvm_term {{ take`{64} (GF_mul_reduce in_var) }});
+};
+
+let GF_mul_2_spec = do {
+  // Initialise variable(s).
+  po <- llvm_alloc (llvm_array SYS_T gf_type);
+  (x, px) <- ptr_to_fresh_readonly "in0" (llvm_array SYS_T gf_type);
+  (y, py) <- ptr_to_fresh_readonly "in1" (llvm_array SYS_T gf_type);
+
+  // Run function.
+  llvm_execute_func [po, px, py];
+  let test = 0; //0, 1, 2, 45 (but long), 50, 57-63
+  // Result is equivalent to Cryptol function.
+  llvm_points_to po (llvm_term {{ (GF_mul x y) }});
+};
 
 /////////////// root.c specs ///////////////
 
@@ -266,35 +311,37 @@ let bitrev_spec = do {
 
   // Check output is GF correct.
   llvm_postcond {{ gf_valid result }};
-
   // Result is equivalent to Cryptol function.
   llvm_return (llvm_term result);
 };
 
 let main : TopLevel () = do {
   
-  gf_iszero_ov <- crucible_llvm_verify linked_mod "gf_iszero" [] false gf_iszero_spec abc;
-  gf_add_ov <- crucible_llvm_verify linked_mod "gf_add" [] false gf_add_spec abc;
+  gf_iszero_ov <- llvm_verify linked_mod "gf_iszero" [] false gf_iszero_spec z3;
+  gf_add_ov <- llvm_verify linked_mod "gf_add" [] false gf_add_spec z3;
   
-  gf_mul_ov <- crucible_llvm_verify linked_mod "gf_mul" [] false gf_mul_spec abc;
-  gf_sq_ov <- crucible_llvm_verify linked_mod "gf_sq" [] false gf_sq_spec abc;
-  gf_inv_ov <- crucible_llvm_verify linked_mod "gf_inv" [gf_mul_ov, gf_sq_ov] false gf_inv_spec abc;
-  gf_frac_ov <- crucible_llvm_verify linked_mod "gf_frac" [gf_mul_ov, gf_inv_ov] false gf_frac_spec abc;
-  //GF_mul_ov <- crucible_llvm_verify linked_mod "GF_mul" [gf_add_ov, gf_mul_ov] false GF_mul_spec abc;
+  gf_mul_ov <- llvm_verify linked_mod "gf_mul" [] false gf_mul_spec z3;
+  gf_sq_ov <- llvm_verify linked_mod "gf_sq" [] false gf_sq_spec z3;
+  gf_inv_ov <- llvm_verify linked_mod "gf_inv" [gf_mul_ov, gf_sq_ov] false gf_inv_spec z3;
+  gf_frac_ov <- llvm_verify linked_mod "gf_frac" [gf_mul_ov, gf_inv_ov] false gf_frac_spec z3;
+  //GF_mul_pre_reduce_ov <- llvm_verify linked_mod "GF_mul_pre_reduce" [gf_mul_ov] false GF_mul_pre_reduce_spec (offline_smtlib2 "../pre_reduce");
+  //GF_mul_reduce_ov <- llvm_verify linked_mod "GF_mul_reduce" [gf_mul_ov] false GF_mul_reduce_spec z3;
+  //GF_mul_2_ov <- llvm_verify linked_mod "GF_mul_2" [GF_mul_pre_reduce_ov, GF_mul_reduce_ov] false GF_mul_2_spec z3;
+  GF_mul_eq_ov <- llvm_verify linked_mod "GF_mul_eq" [] false GF_mul_eq_spec z3;
   print "gf.c done (aside from GF_mul)!";
-
+  llvm_extract linked_mod "GF_eq";
   /*
-  eval_ov <- crucible_llvm_verify linked_mod "eval" [gf_add_ov, gf_mul_ov] false eval_spec abc;
-  root_ov <- crucible_llvm_verify linked_mod "root" [eval_ov] true root_spec abc;
+  eval_ov <- llvm_verify linked_mod "eval" [gf_add_ov, gf_mul_ov] false eval_spec abc;
+  root_ov <- llvm_verify linked_mod "root" [eval_ov] true root_spec abc;
   print "eval.c done!";
   */
 
-  store_gf_ov <- crucible_llvm_verify linked_mod "store_gf" [] false store_gf_spec abc;
-  load_gf_ov <- crucible_llvm_verify linked_mod "load_gf" [] false load_gf_spec abc;
-  load4_ov <- crucible_llvm_verify linked_mod "load4" [] false load4_spec abc;
-  load8_ov <- crucible_llvm_verify linked_mod "load8" [] false load8_spec abc;
-  store8_ov <- crucible_llvm_verify linked_mod "store8" [] false store8_spec abc;
-  bitrev_ov <- crucible_llvm_verify linked_mod "bitrev" [] false bitrev_spec abc;
+  store_gf_ov <- llvm_verify linked_mod "store_gf" [] false store_gf_spec abc;
+  load_gf_ov <- llvm_verify linked_mod "load_gf" [] false load_gf_spec abc;
+  load4_ov <- llvm_verify linked_mod "load4" [] false load4_spec abc;
+  load8_ov <- llvm_verify linked_mod "load8" [] false load8_spec abc;
+  store8_ov <- llvm_verify linked_mod "store8" [] false store8_spec abc;
+  bitrev_ov <- llvm_verify linked_mod "bitrev" [] false bitrev_spec abc;
   print "util.c done!";
 };
 

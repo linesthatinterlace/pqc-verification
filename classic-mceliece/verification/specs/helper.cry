@@ -9,3 +9,5 @@ infixr 100 ~~>
 (<~) f x = f x
 infixr 1 <~
 
+xor_update : {n, a, b} (Integral a, Logic b) => [n]b -> a -> b -> [n]b
+xor_update z ix a = update z ix ((z@ix) ^ a)

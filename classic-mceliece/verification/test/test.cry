@@ -1,0 +1,13 @@
+module test where
+
+type SIZE = 64
+
+test_plus : [SIZE][16] -> [SIZE][16] -> [SIZE][16]
+test_plus in0 in1 = zipWith (+) in0 in1
+
+test_mult : [SIZE][16] -> [SIZE][16] -> [SIZE][16]
+test_mult in0 in1 = zipWith (*) in0 in1
+
+test_dual : [SIZE][16] -> [SIZE][16] -> [2*SIZE - 1][16]
+test_dual in0 in1 = last zs
+  where zs = [zero] # [update z (i + j) ((z @ (i + j)) ^ ((in0 @ i)*(in1 @ j))) | z <- zs | j <- [0 .. SIZE - 1] , i <- [0 .. SIZE - 1] ]

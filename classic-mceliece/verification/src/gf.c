@@ -135,3 +135,61 @@ void GF_mul(gf *out, gf *in0, gf *in1)
 	for (i = 0; i < SYS_T; i++)
 		out[i] = prod[i];
 }
+
+void GF_mul_pre_reduce(gf *out, gf *in0, gf *in1)
+{
+	int i, j;
+
+	gf prod[ SYS_T*2-1 ];
+
+	for (i = 0; i < SYS_T*2-1; i++)
+		prod[i] = 0;
+
+	for (i = 0; i < SYS_T; i++)
+		for (j = 0; j < SYS_T; j++)
+			prod[i+j] ^= gf_mul(in0[i], in1[j]);
+  
+	for (i = 0; i < 2*SYS_T - 1; i++)
+		out[i] = prod[i];
+}
+
+void GF_mul_reduce(gf *out, gf *in)
+{
+	int i;
+
+	gf prod[ SYS_T*2-1 ];
+
+	for (i = 0; i < SYS_T*2-1; i++)
+		prod[i] = in[i];
+
+	for (i = (SYS_T-1)*2; i >= SYS_T; i--)
+	{
+		prod[i - SYS_T + 3] ^= prod[i];
+		prod[i - SYS_T + 1] ^= prod[i];
+		prod[i - SYS_T + 0] ^= gf_mul(prod[i], (gf) 2);
+	}
+  
+	for (i = 0; i < SYS_T; i++)
+		out[i] = prod[i];
+}
+
+void GF_mul_2(gf *out, gf *in0, gf *in1)
+{
+	gf prod[ SYS_T*2-1 ];
+
+  GF_mul_pre_reduce(prod, in0, in1);
+  GF_mul_reduce(out, prod);
+}
+
+uint16_t GF_mul_eq(gf *in0, gf *in1)
+{
+  gf out1[ SYS_T ];
+  gf out2[ SYS_T ];
+  GF_mul(out1, in0, in1);
+  GF_mul_2(out2, in0, in1);
+  int i;
+  int result = 1;
+  for (i = 0; i < SYS_T; i++)
+    result &= (out1[i] == out2[i]);
+  return result;
+}
