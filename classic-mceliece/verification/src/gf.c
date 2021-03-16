@@ -180,16 +180,3 @@ void GF_mul_2(gf *out, gf *in0, gf *in1)
   GF_mul_pre_reduce(prod, in0, in1);
   GF_mul_reduce(out, prod);
 }
-
-uint16_t GF_mul_eq(gf *in0, gf *in1)
-{
-  gf out1[ SYS_T ];
-  gf out2[ SYS_T ];
-  GF_mul(out1, in0, in1);
-  GF_mul_2(out2, in0, in1);
-  int i;
-  int result = 1;
-  for (i = 0; i < SYS_T; i++)
-    result &= (out1[i] == out2[i]);
-  return result;
-}

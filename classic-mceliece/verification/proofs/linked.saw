@@ -1,14 +1,6 @@
 // mceliece248864
 include "helper.saw";
 
-// Params and Definitions
-
-let GBITS = 12;
-let SYS_T = 64;
-let SYS_T_plus_one = 65;
-let SYS_N = 3488;
-
-let gf_type = llvm_int 16;
 
 // Module
 linked_mod <- llvm_load_module "../src/linked.bc";
@@ -20,6 +12,12 @@ import "../specs/util.cry";
 import "../specs/root.cry";
 import "../specs/util.cry";
 
+// Params and Definitions
+
+let SYS_T = eval_int {{SYS_T : [width SYS_T_t]}};
+let SYS_N = eval_int {{SYS_N : [width SYS_N_t]}};
+
+let gf_type = llvm_int 16;
 
 /////////////// gf.c specs ///////////////
 
@@ -32,7 +30,7 @@ let gf_iszero_spec = do {
   let result = {{ gf_iszero a }};
 
   // Check output is GF correct.
-  llvm_postcond {{ gf_valid result }};
+  //llvm_postcond {{ gf_valid result }};
 
   // Result is equivalent to Cryptol function.
   llvm_return (llvm_term result);
@@ -45,15 +43,15 @@ let gf_add_spec = do {
   in1 <- llvm_fresh_var "in1" gf_type;
 
   // Require that input(s) fit inside GBITS (to ensure correctness).
-  llvm_precond {{ gf_valid in0 }};
-  llvm_precond {{ gf_valid in1 }};
+  //llvm_precond {{ gf_valid in0 }};
+  //llvm_precond {{ gf_valid in1 }};
 
   // Run function.
   llvm_execute_func [llvm_term in0, llvm_term in1];
   let result = {{ gf_add in0 in1 }};
 
   // Check output is GF correct.
-  llvm_postcond {{ gf_valid result }};
+  //llvm_postcond {{ gf_valid result }};
 
   // Result is equivalent to Cryptol function.
   llvm_return (llvm_term result);
@@ -73,7 +71,7 @@ let gf_mul_spec = do {
   let result = {{ gf_mul x y }};
 
   // Check output is GF correct.
-  llvm_postcond {{ gf_valid result }};
+  //llvm_postcond {{ gf_valid result }};
 
   // Result is equivalent to Cryptol function.
   llvm_return (llvm_term result);
@@ -91,7 +89,7 @@ let gf_sq_spec = do {
   let result = {{ gf_sq x }};
 
   // Check output is GF correct.
-  llvm_postcond {{ gf_valid result }};
+  //llvm_postcond {{ gf_valid result }};
 
   // Result is equivalent to Cryptol function.
   llvm_return (llvm_term result);
@@ -103,14 +101,14 @@ let gf_inv_spec = do {
   x <- llvm_fresh_var "in" gf_type;
 
   // Require that input(s) fit inside GBITS (to ensure correctness).
-  llvm_precond {{ gf_valid x }};
+  //llvm_precond {{ gf_valid x }};
 
   // Run function.
   llvm_execute_func [llvm_term x];
   let result = {{ gf_inv x }};
 
   // Check output is GF correct.
-  llvm_postcond {{ gf_valid result }};
+  //llvm_postcond {{ gf_valid result }};
 
   // Result is equivalent to Cryptol function.
   llvm_return (llvm_term result);
@@ -122,30 +120,18 @@ let gf_frac_spec = do {
   y <- llvm_fresh_var "num" gf_type;
 
   // Require that input(s) fit inside GBITS (to ensure correctness).
-  llvm_precond {{ gf_valid x }};
-  llvm_precond {{ gf_valid y }};
+  //llvm_precond {{ gf_valid x }};
+  //llvm_precond {{ gf_valid y }};
 
   // Run function.
   llvm_execute_func [llvm_term x, llvm_term y];
   let result = {{ gf_frac x y }};
 
   // Check output is GF correct.
-  llvm_postcond {{ gf_valid result }};
+  //llvm_postcond {{ gf_valid result }};
 
   // Result is equivalent to Cryptol function.
   llvm_return (llvm_term result);
-};
-
-let GF_mul_eq_spec = do {
-  // Initialise variable(s).
-  (x, px) <- ptr_to_fresh_readonly "in0" (llvm_array SYS_T gf_type);
-  (y, py) <- ptr_to_fresh_readonly "in1" (llvm_array SYS_T gf_type);
-
-  // Run function.
-  llvm_execute_func [px, py];
-
-  // Result is equivalent to Cryptol function.
-  llvm_return (llvm_term {{0x0001}});
 };
 
 let GF_mul_spec = do {
@@ -156,20 +142,20 @@ let GF_mul_spec = do {
 
   // Run function.
   llvm_execute_func [po, px, py];
-  let test = 0; //0, 1, 2, 45 (but long), 50, 57-63
+
   // Result is equivalent to Cryptol function.
-  llvm_points_to (llvm_elem po test) (llvm_term {{ (GF_mul x y) @ `test }});
+  llvm_points_to po (llvm_term {{ (GF_mul x y) }});
 };
 
 let GF_mul_pre_reduce_spec = do {
   // Initialise variable(s).
-  po <- llvm_alloc (llvm_array 127 gf_type);
+  po <- llvm_alloc (llvm_array (eval_int {{2*SYS_T - 1 : [width 2*SYS_T_t - 1]}}) gf_type);
   (x, px) <- ptr_to_fresh_readonly "in0" (llvm_array SYS_T gf_type);
   (y, py) <- ptr_to_fresh_readonly "in1" (llvm_array SYS_T gf_type);
 
   // Run function.
   llvm_execute_func [po, px, py];
-  let test = 1;
+
   // Result is equivalent to Cryptol function.
   llvm_points_to po (llvm_term {{ (GF_mul_pre_reduce x y) }});
 };
@@ -177,41 +163,31 @@ let GF_mul_pre_reduce_spec = do {
 let GF_mul_reduce_spec = do {
   // Initialise variable(s).
   po <- llvm_alloc (llvm_array SYS_T gf_type);
-  (in_var, pin) <- ptr_to_fresh_readonly "in" (llvm_array 127 gf_type);
+  (in_var, pin) <- ptr_to_fresh_readonly "in" (llvm_array (eval_int {{2*SYS_T - 1 : [width 2*SYS_T_t - 1]}}) gf_type);
 
   // Run function.
   llvm_execute_func [po, pin];
-  let test = 0; //0, 1, 2, 45 (but long), 50, 57-63
+
   // Result is equivalent to Cryptol function.
   llvm_points_to po (llvm_term {{ take`{64} (GF_mul_reduce in_var) }});
-};
-
-let GF_mul_2_spec = do {
-  // Initialise variable(s).
-  po <- llvm_alloc (llvm_array SYS_T gf_type);
-  (x, px) <- ptr_to_fresh_readonly "in0" (llvm_array SYS_T gf_type);
-  (y, py) <- ptr_to_fresh_readonly "in1" (llvm_array SYS_T gf_type);
-
-  // Run function.
-  llvm_execute_func [po, px, py];
-  let test = 0; //0, 1, 2, 45 (but long), 50, 57-63
-  // Result is equivalent to Cryptol function.
-  llvm_points_to po (llvm_term {{ (GF_mul x y) }});
 };
 
 /////////////// root.c specs ///////////////
 
 let eval_spec = do {
   // Initialise variable(s).
-  (f, pf) <- ptr_to_fresh_readonly "f" (llvm_array SYS_T_plus_one gf_type);
+  (f, pf) <- ptr_to_fresh_readonly "f" (llvm_array (eval_int {{SYS_T + 1 : [width SYS_T_t + 1]}}) gf_type);
   a <- llvm_fresh_var "a" gf_type;
 
-    // Require that input(s) fit inside GBITS (to ensure correctness).
-  llvm_precond {{ all gf_valid f }};
-  llvm_precond {{ gf_valid a }};
-
-  // Run function.
+  //llvm_precond {{ gf_valid a }};
+  //llvm_precond {{ all gf_valid f }};
+  
+    // Run function.
   llvm_execute_func [pf, llvm_term a];
+  let result = {{ eval f a }};
+
+  // Check output is GF correct.
+  //llvm_postcond {{ gf_valid result }};
 
   // Result is equivalent to Cryptol function.
   llvm_return (llvm_term {{ eval f a }});
@@ -220,12 +196,12 @@ let eval_spec = do {
 let root_spec = do {
   // Initialise variable(s).
   pout <- llvm_alloc (llvm_array SYS_N gf_type);
-  (f, pf) <- ptr_to_fresh_readonly "f" (llvm_array SYS_T_plus_one gf_type);
+  (f, pf) <- ptr_to_fresh_readonly "f" (llvm_array (eval_int {{SYS_T + 1 : [width SYS_T_t + 1]}}) gf_type);
   (L, pL) <- ptr_to_fresh_readonly "L" (llvm_array SYS_N gf_type);
 
     // Require that input(s) fit inside GBITS (to ensure correctness).
-  llvm_precond {{ all gf_valid f }};
-  llvm_precond {{ all gf_valid L }};
+  //llvm_precond {{ all gf_valid f }};
+  //llvm_precond {{ all gf_valid L }};
 
   // Run function.
   llvm_execute_func [pout, pf, pL];
@@ -257,7 +233,7 @@ let load_gf_spec = do {
   let result = {{ load_gf src }};
 
   // Check output is GF correct.
-  llvm_postcond {{ gf_valid result }};
+  //llvm_postcond {{ gf_valid result }};
 
   // Result is equivalent to Cryptol function.
   llvm_return (llvm_term result);
@@ -310,7 +286,7 @@ let bitrev_spec = do {
   let result = {{ bitrev a }};
 
   // Check output is GF correct.
-  llvm_postcond {{ gf_valid result }};
+  //llvm_postcond {{ gf_valid result }};
   // Result is equivalent to Cryptol function.
   llvm_return (llvm_term result);
 };
@@ -326,15 +302,13 @@ let main : TopLevel () = do {
   gf_frac_ov <- llvm_verify linked_mod "gf_frac" [gf_mul_ov, gf_inv_ov] false gf_frac_spec z3;
   //GF_mul_pre_reduce_ov <- llvm_verify linked_mod "GF_mul_pre_reduce" [gf_mul_ov] false GF_mul_pre_reduce_spec (offline_smtlib2 "../pre_reduce");
   //GF_mul_reduce_ov <- llvm_verify linked_mod "GF_mul_reduce" [gf_mul_ov] false GF_mul_reduce_spec z3;
-  //GF_mul_2_ov <- llvm_verify linked_mod "GF_mul_2" [GF_mul_pre_reduce_ov, GF_mul_reduce_ov] false GF_mul_2_spec z3;
-  GF_mul_eq_ov <- llvm_verify linked_mod "GF_mul_eq" [] false GF_mul_eq_spec z3;
+  //GF_mul_2_ov <- llvm_verify linked_mod "GF_mul_2" [GF_mul_pre_reduce_ov, GF_mul_reduce_ov] false GF_mul_spec z3;
   print "gf.c done (aside from GF_mul)!";
-  llvm_extract linked_mod "GF_eq";
-  /*
-  eval_ov <- llvm_verify linked_mod "eval" [gf_add_ov, gf_mul_ov] false eval_spec abc;
-  root_ov <- llvm_verify linked_mod "root" [eval_ov] true root_spec abc;
+  
+  eval_ov <- llvm_verify linked_mod "eval" [gf_add_ov, gf_mul_ov] false eval_spec z3;
+  root_ov <- llvm_verify linked_mod "root" [eval_ov] true root_spec (unint_z3 ["root::eval"]);
   print "eval.c done!";
-  */
+  
 
   store_gf_ov <- llvm_verify linked_mod "store_gf" [] false store_gf_spec abc;
   load_gf_ov <- llvm_verify linked_mod "load_gf" [] false load_gf_spec abc;
