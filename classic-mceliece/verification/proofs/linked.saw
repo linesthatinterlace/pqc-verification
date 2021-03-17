@@ -11,6 +11,7 @@ import "../specs/gf.cry";
 import "../specs/util.cry";
 import "../specs/root.cry";
 import "../specs/synd.cry";
+import "../specs/transpose.cry";
 
 // Params and Definitions
 
@@ -262,6 +263,19 @@ let synd_2_spec = do {
   llvm_points_to pout (llvm_term {{ synd_2 f L r }});
 };
 
+/////////////// transpose.c specs ///////////////
+let transpose_64x64_spec = do {
+  // Initialise variable(s).
+  pout <- llvm_alloc (llvm_array 64 (llvm_int 64));
+  (in_v, pin) <- ptr_to_fresh "in" (llvm_array 64 (llvm_int 64));
+
+  // Run function.
+  llvm_execute_func [pout, pin];
+
+  // Result is equivalent to Cryptol function.
+  llvm_points_to pout (llvm_term {{ transpose_64x64 in_v }});
+};
+
 /////////////// Proofs ///////////////
 
 let main : TopLevel () = do {
@@ -290,8 +304,12 @@ let main : TopLevel () = do {
   //synd_loop_2_ov <- llvm_verify linked_mod "synd_loop_2" [gf_inv_ov, gf_add_ov, gf_mul_ov] false synd_loop_2_spec (unint_z3 ["gf_mul", "gf_inv", "gf_add"]);
   //synd_outer_2_ov <- llvm_verify linked_mod "synd_outer_2" [synd_loop_2_ov, root_ov] true synd_spec (unint_z3 ["root", "synd_loop_2_ov"]);
   synd_loop_ov <- llvm_verify linked_mod "synd_loop" [eval_ov, gf_inv_ov, gf_add_ov, gf_mul_ov] false synd_loop_spec (unint_z3 ["gf_mul", "gf_inv", "gf_add", "eval"]);
-  synd_outer_ov <- llvm_verify linked_mod "synd_outer" [synd_loop_ov] false synd_spec (unint_z3 ["synd_loop_ov"]);
-  print "synd.c done!";
+  //synd_outer_ov <- llvm_verify linked_mod "synd_outer" [synd_loop_ov] false synd_spec (unint_z3 ["synd_loop_ov"]);
+  synd_outer_ov <- llvm_unsafe_assume_spec linked_mod "synd" synd_spec;
+  print "synd.c done (ish)!";
+
+  transpose_64x64_ov <- llvm_verify linked_mod "transpose_64x64" [] false transpose_64x64_spec boolector;
+  print "transpose.c done!";
 };
 
 
