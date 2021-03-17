@@ -10,14 +10,33 @@ import root
 synd : [SYS_T_t + 1]gf_t -> [SYS_N_t]gf_t -> [SYS_N_t/8][8] -> [2*SYS_T_t]gf_t
 synd f L r = last zss
   where zss = [zero] # [ update_i zs i | zs <- zss | i <- [0 .. SYS_N_t - 1]]
-        update_i zs i = [ gf_add z (gf_mul e_inv c) | z <- zs | e_inv <- e_invs ]
+        update_i zs i = synd_loop f li c zs
           where c = zext (((r@(i/8)) >> (i%8)) && 1)
                 li = L@i
-                e = eval f li
-                e_inv_pre = gf_inv (gf_mul e e)
-                e_invs = [e_inv_pre] # [ gf_mul e_inv li | e_inv <- e_invs ]
 
+synd_loop : [SYS_T_t + 1]gf_t -> gf_t -> gf_t -> [2*SYS_T_t]gf_t -> [2*SYS_T_t]gf_t
+synd_loop f li c in = [ gf_add z (gf_mul e_inv c) | z <- in | e_inv <- e_invs ]
+  where e = eval f li
+        e_inv_pre = gf_inv (gf_mul e e)
+        e_invs = [e_inv_pre] # [ gf_mul e_inv li | e_inv <- e_invs ]
+        
 /*
+synd_2 : [SYS_T_t + 1]gf_t -> [SYS_N_t]gf_t -> [SYS_N_t/8][8] -> [2*SYS_T_t]gf_t
+synd_2 f L r = last zss
+  where zss = [zero] # [ if c then synd_loop_2 e li zs else zs | zs <- zss | i <- [0 .. SYS_N_t - 1] | e <- root f L | li <- L | c <- reverse <~ loadbytes r]
+
+synd_loop_2 : gf_t -> gf_t -> [2*SYS_T_t]gf_t -> [2*SYS_T_t]gf_t
+synd_loop_2 e li in = [ gf_add z e_inv | z <- in | e_inv <- e_invs ]
+  where e_invs = [gf_inv (gf_mul e e)] # [ gf_mul e_inv li | e_inv <- e_invs ]
+
+synd_loop : {ix} (Integral ix, Literal 8 ix) => [SYS_T_t + 1]gf_t -> [SYS_N_t]gf_t -> [SYS_N_t/8][8] -> ix -> [2*SYS_T_t]gf_t -> [2*SYS_T_t]gf_t
+synd_loop f L r i in = [ gf_add z (gf_mul e_inv c) | z <- in | e_inv <- e_invs ]
+  where c = zext (((r@(i/8)) >> (i%8)) && 1)
+        li = L@i
+        e = eval f li
+        e_inv_pre = gf_inv (gf_mul e e)
+        e_invs = [e_inv_pre] # [ gf_mul e_inv li | e_inv <- e_invs ]
+
 A draft version of it that isn't constant time but might run a bit quicker as a result (need to test), plus a development version that has the internals exposed (can probably scrap).
 synd' : [SYS_T_t + 1]gf_t -> [SYS_N_t]gf_t -> [SYS_N_t/8][8] -> [2*SYS_T_t]gf_t
 synd' f L r = last zs
