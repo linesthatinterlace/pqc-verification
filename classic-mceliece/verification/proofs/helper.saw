@@ -13,3 +13,5 @@ let ptr_to_fresh_readonly n ty = do {
     llvm_points_to p (llvm_term x);
     return (x, p);
 };
+
+let w4_z3 = w4_unint_z3 [];

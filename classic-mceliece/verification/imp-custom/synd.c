@@ -2,10 +2,10 @@
   This file is for syndrome computation
 */
 
-#include "synd.h"
+#include "../imp/synd.h"
 
-#include "params.h"
-#include "root.h"
+#include "../imp/params.h"
+#include "../imp/root.h"
 
 #include <stdio.h>
 

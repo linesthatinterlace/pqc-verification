@@ -1,9 +1,11 @@
 // mceliece248864
+
+
 include "helper.saw";
 
 
 // Module
-linked_mod <- llvm_load_module "../src/linked.bc";
+linked_mod <- llvm_load_module "../artifacts/linked.bc";
 
 // Cry files
 import "../specs/params.cry";
@@ -278,38 +280,38 @@ let transpose_64x64_spec = do {
 
 /////////////// Proofs ///////////////
 
+enable_experimental;
+
 let main : TopLevel () = do {
   
-  gf_iszero_ov <- llvm_verify linked_mod "gf_iszero" [] false gf_iszero_spec z3;
-  gf_add_ov <- llvm_verify linked_mod "gf_add" [] false gf_add_spec z3;
-  gf_mul_ov <- llvm_verify linked_mod "gf_mul" [] false gf_mul_spec z3;
-  gf_sq_ov <- llvm_verify linked_mod "gf_sq" [] false gf_sq_spec z3;
-  gf_inv_ov <- llvm_verify linked_mod "gf_inv" [gf_mul_ov, gf_sq_ov] false gf_inv_spec (unint_z3 ["gf_mul", "gf_sq"]);
-  gf_frac_ov <- llvm_verify linked_mod "gf_frac" [gf_mul_ov, gf_inv_ov] false gf_frac_spec (unint_z3 ["gf_mul", "gf_inv"]);
-  GF_mul_ov <- llvm_verify linked_mod "GF_mul" [gf_mul_ov] false GF_mul_spec (unint_z3 ["gf_mul"]);
-  print "gf.c done!";
+  gf_iszero_ov <- llvm_verify linked_mod "gf_iszero" [] false gf_iszero_spec w4_z3;
+  gf_add_ov <- llvm_verify linked_mod "gf_add" [] false gf_add_spec w4_z3;
+  gf_mul_ov <- llvm_verify linked_mod "gf_mul" [] false gf_mul_spec w4_z3;
+  gf_sq_ov <- llvm_verify linked_mod "gf_sq" [] false gf_sq_spec w4_z3;
+  gf_inv_ov <- llvm_verify linked_mod "gf_inv" [gf_mul_ov, gf_sq_ov] false gf_inv_spec (w4_unint_z3 ["gf_mul", "gf_sq"]);
+  gf_frac_ov <- llvm_verify linked_mod "gf_frac" [gf_mul_ov, gf_inv_ov] false gf_frac_spec (w4_unint_z3 ["gf_mul", "gf_inv"]);
+  GF_mul_ov <- llvm_verify linked_mod "GF_mul" [gf_mul_ov] false GF_mul_spec (w4_unint_z3 ["gf_mul"]);
   
-  eval_ov <- llvm_verify linked_mod "eval" [gf_add_ov, gf_mul_ov] false eval_spec (unint_z3 ["gf_add", "gf_mul"]);
-  root_ov <- llvm_verify linked_mod "root" [eval_ov] true root_spec (unint_z3 ["eval"]);
-  print "eval.c done!";
+  eval_ov <- llvm_verify linked_mod "eval" [gf_add_ov, gf_mul_ov] false eval_spec (w4_unint_z3 ["gf_add", "gf_mul"]);
+  root_ov <- llvm_verify linked_mod "root" [eval_ov] true root_spec (w4_unint_z3 ["eval"]);
 
-  store_gf_ov <- llvm_verify linked_mod "store_gf" [] false store_gf_spec z3;
-  load_gf_ov <- llvm_verify linked_mod "load_gf" [] false load_gf_spec z3;
-  load4_ov <- llvm_verify linked_mod "load4" [] false load4_spec z3;
-  load8_ov <- llvm_verify linked_mod "load8" [] false load8_spec z3;
-  store8_ov <- llvm_verify linked_mod "store8" [] false store8_spec z3;
-  bitrev_ov <- llvm_verify linked_mod "bitrev" [] false bitrev_spec z3;
-  print "util.c done!";
+  store_gf_ov <- llvm_verify linked_mod "store_gf" [] false store_gf_spec w4_z3;
+  load_gf_ov <- llvm_verify linked_mod "load_gf" [] false load_gf_spec w4_z3;
+  load4_ov <- llvm_verify linked_mod "load4" [] false load4_spec w4_z3;
+  load8_ov <- llvm_verify linked_mod "load8" [] false load8_spec w4_z3;
+  store8_ov <- llvm_verify linked_mod "store8" [] false store8_spec w4_z3;
+  bitrev_ov <- llvm_verify linked_mod "bitrev" [] false bitrev_spec w4_z3;
 
   //synd_loop_2_ov <- llvm_verify linked_mod "synd_loop_2" [gf_inv_ov, gf_add_ov, gf_mul_ov] false synd_loop_2_spec (unint_z3 ["gf_mul", "gf_inv", "gf_add"]);
   //synd_outer_2_ov <- llvm_verify linked_mod "synd_outer_2" [synd_loop_2_ov, root_ov] true synd_spec (unint_z3 ["root", "synd_loop_2_ov"]);
-  synd_loop_ov <- llvm_verify linked_mod "synd_loop" [eval_ov, gf_inv_ov, gf_add_ov, gf_mul_ov] false synd_loop_spec (unint_z3 ["gf_mul", "gf_inv", "gf_add", "eval"]);
-  //synd_outer_ov <- llvm_verify linked_mod "synd_outer" [synd_loop_ov] false synd_spec (unint_z3 ["synd_loop_ov"]);
+  synd_loop_ov <- llvm_verify linked_mod "synd_loop" [eval_ov, gf_inv_ov, gf_add_ov, gf_mul_ov] false synd_loop_spec (w4_unint_z3 ["gf_mul", "gf_inv", "gf_add", "eval"]);
+
+  //synd_outer_ov <- llvm_verify linked_mod "synd_outer" [synd_loop_ov] false synd_spec (offline_unint_smtlib2 ["synd_loop"] "../synd_outer");
   synd_outer_ov <- llvm_unsafe_assume_spec linked_mod "synd" synd_spec;
-  print "synd.c done (ish)!";
 
   transpose_64x64_ov <- llvm_verify linked_mod "transpose_64x64" [] false transpose_64x64_spec boolector;
-  print "transpose.c done!";
+
+  summarize_verification;
 };
 
 

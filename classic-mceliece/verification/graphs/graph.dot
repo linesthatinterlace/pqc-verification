@@ -30,7 +30,7 @@ digraph G {
       rng_int [shape=box,fontsize=22,label="Internal RNG functions"];
       randombytes -> rng_int;
     }
-        subgraph "cluster_transpose.c" {
+    subgraph "cluster_transpose.c" {
       label="transpose.c";
       transpose_64x64 [shape=box,fontsize=22,label="transpose_64x64"];
     }
