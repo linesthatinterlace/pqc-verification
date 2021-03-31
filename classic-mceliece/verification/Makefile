@@ -3,8 +3,8 @@
 
 .SUFFIXES: .c .bc
 
-artifacts/linked.bc : artifacts/gf.bc artifacts/root.bc artifacts/util.bc artifacts/synd.bc artifacts/transpose.bc
-	llvm-link artifacts/gf.bc artifacts/root.bc artifacts/util.bc artifacts/synd.bc artifacts/transpose.bc -o artifacts/linked.bc
+artifacts/linked.bc : artifacts/gf.bc artifacts/root.bc artifacts/util.bc artifacts/synd.bc artifacts/transpose.bc artifacts/bm.bc
+	llvm-link artifacts/gf.bc artifacts/root.bc artifacts/util.bc artifacts/synd.bc artifacts/transpose.bc artifacts/bm.bc -o artifacts/linked.bc
 
 artifacts/synd.bc : imp-custom/synd.c
 	clang -g -O1 -c -emit-llvm $< -o $@ -march=native -mtune=native -Wall -I. -Isubroutines -DKAT -DKATNUM=`cat imp/KATNUM` "-DCRYPTO_NAMESPACE(x)=x" "-D_CRYPTO_NAMESPACE(x)=_##x"
@@ -18,8 +18,11 @@ artifacts/%.bc : imp/%.c
 graph : graphs/graph.dot artifacts/linked.bc
 	dot -Tpng $< > artifacts/graph.png
 
+test-log: artifacts/linked.bc
+	saw -v 0 proofs/linked.saw | tee artifacts/proof_output
+
 test: artifacts/linked.bc
-	saw proofs/linked.saw | tee artifacts/proof_output
+	saw proofs/linked.saw
 
 clean:
 	rm -f artifacts/*

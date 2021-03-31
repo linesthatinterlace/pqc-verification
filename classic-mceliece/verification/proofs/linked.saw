@@ -14,6 +14,7 @@ import "../specs/util.cry";
 import "../specs/root.cry";
 import "../specs/synd.cry";
 import "../specs/transpose.cry";
+import "../specs/bm.cry";
 
 // Params and Definitions
 
@@ -238,33 +239,6 @@ let synd_loop_spec = do {
   llvm_points_to pin (llvm_term {{ synd_loop f li c in_v }});
 };
 
-let synd_loop_2_spec = do {
-  // Initialise variable(s).
-  (in_v, pin) <- ptr_to_fresh "in" (llvm_array (eval_int {{2*SYS_T : [width 2*SYS_T_t]}}) gf_type);
-  li <- llvm_fresh_var "li" gf_type;
-  e <- llvm_fresh_var "e" gf_type;
-
-  // Run function.
-  llvm_execute_func [pin, llvm_term li, llvm_term e];
-
-  // Result is equivalent to Cryptol function.
-  llvm_points_to pin (llvm_term {{ synd_loop_2 li e in_v }});
-};
-
-let synd_2_spec = do {
-  // Initialise variable(s).
-  pout <- llvm_alloc (llvm_array (eval_int {{2*SYS_T : [width 2*SYS_T_t]}}) gf_type);
-  (f, pf) <- ptr_to_fresh_readonly "f" (llvm_array (eval_int {{SYS_T + 1 : [width (SYS_T_t + 1)]}}) gf_type);
-  (L, pL) <- ptr_to_fresh_readonly "L" (llvm_array SYS_N gf_type);
-  (r, pr) <- ptr_to_fresh_readonly "r" (llvm_array (eval_int {{SYS_N/8 : [width SYS_N_t]}}) (llvm_int 8));
-
-  // Run function.
-  llvm_execute_func [pout, pf, pL, pr];
-
-  // Result is equivalent to Cryptol function.
-  llvm_points_to pout (llvm_term {{ synd_2 f L r }});
-};
-
 /////////////// transpose.c specs ///////////////
 let transpose_64x64_spec = do {
   // Initialise variable(s).
@@ -276,6 +250,19 @@ let transpose_64x64_spec = do {
 
   // Result is equivalent to Cryptol function.
   llvm_points_to pout (llvm_term {{ transpose_64x64 in_v }});
+};
+
+/////////////// bm.c specs ///////////////
+let bm_spec = do {
+  // Initialise variable(s).
+  pout <- llvm_alloc (llvm_array (eval_int {{SYS_T + 1 : [width (SYS_T_t + 1)]}}) gf_type);
+  (s, ps) <- ptr_to_fresh "in" (llvm_array (eval_int {{2*SYS_T : [width 2*SYS_T_t]}}) gf_type);
+
+  // Run function.
+  llvm_execute_func [pout, ps];
+
+  // Result is equivalent to Cryptol function.
+  llvm_points_to pout (llvm_term {{ bm s }});
 };
 
 /////////////// Proofs ///////////////
@@ -306,10 +293,12 @@ let main : TopLevel () = do {
   //synd_outer_2_ov <- llvm_verify linked_mod "synd_outer_2" [synd_loop_2_ov, root_ov] true synd_spec (unint_z3 ["root", "synd_loop_2_ov"]);
   synd_loop_ov <- llvm_verify linked_mod "synd_loop" [eval_ov, gf_inv_ov, gf_add_ov, gf_mul_ov] false synd_loop_spec (w4_unint_z3 ["gf_mul", "gf_inv", "gf_add", "eval"]);
 
-  //synd_outer_ov <- llvm_verify linked_mod "synd_outer" [synd_loop_ov] false synd_spec (offline_unint_smtlib2 ["synd_loop"] "../synd_outer");
+  //synd_outer_ov <- llvm_verify linked_mod "synd_outer" [synd_loop_ov] false synd_spec (unint_z3 ["synd_loop"]);
   synd_outer_ov <- llvm_unsafe_assume_spec linked_mod "synd" synd_spec;
 
   transpose_64x64_ov <- llvm_verify linked_mod "transpose_64x64" [] false transpose_64x64_spec boolector;
+
+  bm_ov <- llvm_verify linked_mod "bm" [gf_mul_ov, gf_frac_ov] false bm_spec (w4_unint_z3 ["gf_mul", "gf_frac"]);
 
   summarize_verification;
 };

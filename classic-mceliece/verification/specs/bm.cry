@@ -5,3 +5,31 @@ module bm where
 import helper
 import params
 import gf
+
+
+bm : [2*SYS_T_t]gf_t -> [SYS_T_t + 1]gf_t
+bm s = reverse (data_final.C)
+  where (B_init : [SYS_T_t + 1]gf_t) = [zero, 1] # zero
+        (C_init : [SYS_T_t + 1]gf_t) = [1] # zero
+        (b_init : gf_t) = 1
+        (L_init : [16]) = 0
+        data_init = {B = B_init, C = C_init, b = b_init, L = L_init}
+        loop_N : [16] -> {B: [SYS_T_t + 1]gf_t, C: [SYS_T_t + 1]gf_t, b : gf_t, L : [16]} -> {B: [SYS_T_t + 1]gf_t, C: [SYS_T_t + 1]gf_t, b : gf_t, L : [16]}
+        loop_N N data = {B = B_final, C = C_final, b = b_final, L = L_final}
+          where d_init = 0
+                loop_i1 i d' = if i <= (min N SYS_T) then d' ^ (gf_mul ( (data.C)@i ) ( s@(N - i) ) ) else d'
+                ds = [d_init] # [ loop_i1 i d' | d' <- ds | i <- [0 .. SYS_T_t]]
+                d = last ds
+                mne = ((d - 1) >> 15) - 1
+                mle = (((N - 2*data.L) >> 15) - 1) && mne
+                f = gf_frac data.b d
+                loop_i2 i C' = xor_update C' i ((gf_mul f (data.B@i)) && mne)
+                Cs = [data.C] # [ loop_i2 i C' | C' <- Cs | i <- [0 .. SYS_T_t]]
+                C_final = last Cs
+                L_final = (data.L && ~mle) || ((N+1-data.L) && mle)
+                b_final = (data.b && ~mle) || (d && mle)
+                B_final = [ (mB && ~mle) || (mC && mle) | mB <- data.B | mC <- data.C ] >> 1
+        datas = [data_init] # [ loop_N N data' | data' <- datas | N <- [0 .. 2*SYS_T_t - 1] ]
+        data_final = last datas
+
+        
