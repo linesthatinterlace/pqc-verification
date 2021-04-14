@@ -19,7 +19,7 @@ graph : graphs/graph.dot artifacts/linked.bc
 	dot -Tpng $< > artifacts/graph.png
 
 test-log: artifacts/linked.bc
-	saw -v 0 proofs/linked.saw | tee artifacts/proof_output
+	saw proofs/linked.saw > artifacts/proof_output
 
 test: artifacts/linked.bc
 	saw proofs/linked.saw

@@ -298,7 +298,7 @@ let main : TopLevel () = do {
 
   transpose_64x64_ov <- llvm_verify linked_mod "transpose_64x64" [] false transpose_64x64_spec boolector;
 
-  bm_ov <- llvm_verify linked_mod "bm" [gf_mul_ov, gf_frac_ov] false bm_spec (w4_unint_z3 ["gf_mul", "gf_frac"]);
+  //bm_ov <- llvm_verify linked_mod "bm" [gf_mul_ov, gf_frac_ov] false bm_spec (offline_unint_smtlib2 ["gf_mul", "gf_frac"] "bm");
 
   summarize_verification;
 };

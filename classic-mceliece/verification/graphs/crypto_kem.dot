@@ -1,0 +1,9 @@
+digraph "cluster_crypto_kem.h" {
+  color=black;rankdir=RL;fontsize=20;ranksep=2;
+  label="crypto_kem.h";
+  crypto_hash_32b [shape=box,fontsize=22,label="crypto_hash_32b"];
+  shake [shape=box,fontsize=22,label="shake"];
+  SHAKE256 [shape=box,fontsize=22,label="SHAKE256 (library function)"];
+  crypto_hash_32b -> SHAKE256;
+  shake -> SHAKE256;
+}
