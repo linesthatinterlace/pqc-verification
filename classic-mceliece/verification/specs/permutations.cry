@@ -93,43 +93,46 @@ L_perm pi = xIfs (lastControlBits`{m} pi)
 M_perm : {m} (fin m) => Perm (2*2^^m) -> Perm (2*2^^m)
 M_perm pi = composePermInv (Fpi`{m} pi) (L_perm`{m} pi) 
 
-controlBits : {m} (fin m) => Perm (2*2^^m) -> [2*m + 1][2^^m]
-controlBits pi =
-  if `m == (0 : Integer) then zero # [zero # [pi.perm @ 0 == 1]]
-  else drop <~ firstbits # middlebits # lastbits
+controlBits : {m} (fin m) => Perm (2*2^^m) -> [(2*m + 1)*2^^m]
+controlBits pi = 
+  if `m == (0 : Integer)
+  then coerceSize <~ controlBits_zero`{0} pi_zero
+  else coerceSize <~ controlBits_rec`{max 1 m} pi_rec
     where 
-      firstbits = [firstControlBits`{m} pi]
-      lastbits = [lastControlBits`{m} pi]
-      middlebits = map unboost`{m} <~ middleBits`{max 1 m} (boost`{m} pi)
+      pi_zero = Perm { perm = coerceSize pi.perm }
+      pi_rec = Perm { perm = coerceSize pi.perm }
 
+controlBits_zero : {m} (fin m, m == 0) => Perm (2*2^^m) -> [(2*m + 1)*2^^m]
+controlBits_zero pi = [pi.perm @ 0 == 1]
 
-middleBits : {m} (fin m, m>=1) => Perm (2*2^^m) -> [2*m - 1][2^^m]
-middleBits pi = M_bits
-  where [M0, M1] = [ map (\x -> x/2) p | p <- uninterleve <~ (M_perm`{m} pi).perm] : [2][2^^m]Integer
-        M0_bits = controlBits`{m - 1} (Perm {perm = powAddRev`{2, 1, m - 1} M0})// : [2*m - 1][2^^(m - 1)]
-        M1_bits = controlBits`{m - 1} (Perm {perm = powAddRev`{2, 1, m - 1} M1}) : [2*m - 1][2^^(m - 1)]
-        M_bits = map powAdd`{2, 1, m - 1} <~ split`{2*m - 1} <~ interleve [join M0_bits, join M1_bits]
+controlBits_rec : {m} (fin m, m>=1) => Perm (2*2^^m) -> [(2*m + 1)*2^^m]
+controlBits_rec pi = coerceSize <~ firstControlBits`{m} pi # middlebits # lastControlBits`{m} pi
+  where
+    middlebits = interleve [M0_bits, M1_bits]
+    M0_bits = controlBits`{m - 1} (Perm {perm = M0})
+    M1_bits = controlBits`{m - 1} (Perm {perm = M1})
+    [M0, M1] = map coerceSize [ map (\x -> x/2) p | p <- uninterleve <~ (M_perm`{m} pi).perm]
 
 coerceSize : {m, n, a} (fin m, fin n) => [m]a -> [n]a
 coerceSize xs = take <~ (xs # undefined`{[max m n - m]a})
 
-powAdd : {x, y, z, a} (fin x, fin y, fin z) => [x^^y*x^^z]a -> [x^^(y + z)]a
-powAdd = coerceSize
-
-powAddRev : {x, y, z, a} (fin x, fin y, fin z) => [x^^(y + z)]a-> [x^^y*x^^z]a
-powAddRev = coerceSize
-
-boost : {m} (fin m) => Perm (2*2^^m) -> Perm(2*2 ^^ max 1 m)
-boost pi = Perm {perm = join <~ map boost'`{m} <~ split`{2} pi.perm}
-
-boost' : {m, a} (fin m) => [2^^m]a -> [2 ^^ max 1 m]a
-boost' = coerceSize
-
-unboost : {m, a} (fin m) => [2^^max 1 m]a -> [2^^m]a
-unboost = coerceSize
-
 condSwap : {n, a, ix} (Integral ix) => Bit -> [2]ix -> [n]a -> [n]a
 condSwap c [i, j] xs = if c then updates xs [i, j] [xs @ j, xs @ i] else xs
+
+myLength : {n, a} (fin n) => [n]a -> Integer
+myLength xs =
+  if `n == 0
+  then myLength_zero`{0} xs_zero
+  else myLength_rec`{max 1 n} xs_rec
+    where 
+      xs_zero = coerceSize xs
+      xs_rec = coerceSize xs
+
+myLength_zero : {n, a} (fin n, n == 0) => [n]a -> Integer
+myLength_zero xs = 0
+
+myLength_rec : {n, a} (fin n, n >= 1) => [n]a -> Integer
+myLength_rec xs = 1 + myLength (tail xs)
 
 controlBitsToPerm : {m} (fin m) => [(2*m + 1)*2^^m] -> Perm (2*2^^m)
 controlBitsToPerm cs = last ps
@@ -147,8 +150,8 @@ condRound cs cps p_init = last ps
                         | p <- ps
                         ]
 
-controlBitsToPermRounds : {m} (fin m) => [2*m + 1][2^^m] -> Perm (2*2^^m)
-controlBitsToPermRounds css = last ps
+controlRoundsToPerm : {m} (fin m) => [2*m + 1][2^^m] -> Perm (2*2^^m)
+controlRoundsToPerm css = last ps
   where p_init = Perm { perm = [0 .. <(2*2^^m)] }
         ps = [p_init] # [ condRound cs cps p
                         | cs <- css

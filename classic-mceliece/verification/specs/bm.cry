@@ -14,22 +14,89 @@ bm s = reverse (data_final.C)
         (b_init : gf_t) = 1
         (L_init : [16]) = 0
         data_init = {B = B_init, C = C_init, b = b_init, L = L_init}
-        loop_N : [16] -> {B: [SYS_T_t + 1]gf_t, C: [SYS_T_t + 1]gf_t, b : gf_t, L : [16]} -> {B: [SYS_T_t + 1]gf_t, C: [SYS_T_t + 1]gf_t, b : gf_t, L : [16]}
-        loop_N N data = {B = B_final, C = C_final, b = b_final, L = L_final}
-          where d_init = 0
-                loop_i1 i d' = if i <= (min N SYS_T) then d' ^ (gf_mul ( (data.C)@i ) ( s@(N - i) ) ) else d'
-                ds = [d_init] # [ loop_i1 i d' | d' <- ds | i <- [0 .. SYS_T_t]]
-                d = last ds
-                mne = ((d - 1) >> 15) - 1
-                mle = (((N - 2*data.L) >> 15) - 1) && mne
-                f = gf_frac data.b d
-                loop_i2 i C' = xor_update C' i ((gf_mul f (data.B@i)) && mne)
-                Cs = [data.C] # [ loop_i2 i C' | C' <- Cs | i <- [0 .. SYS_T_t]]
-                C_final = last Cs
-                L_final = (data.L && ~mle) || ((N+1-data.L) && mle)
-                b_final = (data.b && ~mle) || (d && mle)
-                B_final = [ (mB && ~mle) || (mC && mle) | mB <- data.B | mC <- data.C ] >> 1
-        datas = [data_init] # [ loop_N N data' | data' <- datas | N <- [0 .. 2*SYS_T_t - 1] ]
+        datas = [data_init] # [ loop_N s N data' | data' <- datas | N <- [0 .. 2*SYS_T_t - 1] ]
         data_final = last datas
 
-        
+bm_orig : [2*SYS_T_t]gf_t -> [SYS_T_t + 1]gf_t 
+bm_orig s = reverse (data_final.C)
+  where (B_init : [SYS_T_t + 1]gf_t) = [0, 1] # zero
+        (C_init : [SYS_T_t + 1]gf_t) = [1] # zero
+        (b_init : gf_t) = 1
+        (L_init : [16]) = 0
+        data_init = {B = B_init, C = C_init, b = b_init, L = L_init}
+        datas = [data_init] # [ loop_N_orig s N data' | data' <- datas | N <- [0 .. 2*SYS_T_t - 1] ]
+        data_final = last datas
+
+loop_N : [2*SYS_T_t]gf_t -> [16] -> {B: [SYS_T_t + 1]gf_t, C: [SYS_T_t + 1]gf_t, b : gf_t, L : [16]} -> {B: [SYS_T_t + 1]gf_t, C: [SYS_T_t + 1]gf_t, b : gf_t, L : [16]}
+loop_N s N data = {B = B_final, C = C_final, b = b_final, L = L_final}
+  where d_init = 0
+        loop_i1 i d' = if i <= (min N SYS_T) then d' ^ (gf_mul ( (data.C)@i ) ( s@(N - i) ) ) else d'
+        ds = [d_init] # [ loop_i1 i d' | d' <- ds | i <- [0 .. SYS_T_t]]
+        d = last ds
+        f = gf_frac data.b d
+        mne = ((d - 1) >> 15) - 1
+        mle = (((N - 2*data.L) >> 15) - 1) && mne
+        C_final = [gf_add Ci ((gf_mul f Bi) && mne) | Ci <- data.C | Bi <- data.B]
+        L_final = (data.L && ~mle) || ((N+1-data.L) && mle)
+        b_final = (data.b && ~mle) || (d && mle)
+        B_final = [ (mB && ~mle) || (mC && mle) | mB <- data.B | mC <- data.C ] >> 1
+
+
+
+loop_N_orig : [2*SYS_T_t]gf_t -> [16] -> {B: [SYS_T_t + 1]gf_t, C: [SYS_T_t + 1]gf_t, b : gf_t, L : [16]} -> {B: [SYS_T_t + 1]gf_t, C: [SYS_T_t + 1]gf_t, b : gf_t, L : [16]}
+loop_N_orig s N data = {B = B_final, C = C_final, b = b_final, L = L_final}
+  where d_init = 0
+        loop_i1 i d' = if i <= (min N SYS_T) then d' ^ (gf_mul ( (data.C)@i ) ( s@(N - i) ) ) else d'
+        ds = [d_init] # [ loop_i1 i d' | d' <- ds | i <- [0 .. SYS_T_t]]
+        d = last ds
+        f = gf_frac data.b d
+        d_zero = d == 0
+        twoL_gt_N = 2*data.L > N
+        C_modif = [ gf_add Ci (gf_mul f Bi) | Ci <- data.C | Bi <- data.B ]
+        B_final = if d_zero \/ twoL_gt_N then data.B >> 1 else data.C >> 1
+        C_final = if d_zero then data.C else C_modif
+        b_final = if d_zero \/ twoL_gt_N then data.b else d
+        L_final = if d_zero \/ twoL_gt_N then data.L else N + 1 - data.L
+
+modif : [16] -> gf_t -> gf_t -> {B: [SYS_T_t + 1]gf_t, C: [SYS_T_t + 1]gf_t, b : gf_t, L : [16]} -> {B: [SYS_T_t + 1]gf_t, C: [SYS_T_t + 1]gf_t, b : gf_t, L : [16]}
+modif N d f data =  {B = B_final, C = C_final, b = b_final, L = L_final}
+  where mne = ((d - 1) >> 15) - 1
+        mle = (((N - 2*data.L) >> 15) - 1) && mne
+        C_final = [gf_add Ci ((gf_mul f Bi) && mne) | Ci <- data.C | Bi <- data.B]
+        L_final = (data.L && ~mle) || ((N+1-data.L) && mle)
+        b_final = (data.b && ~mle) || (d && mle)
+        B_final = [ (mB && ~mle) || (mC && mle) | mB <- data.B | mC <- data.C ] >> 1
+
+modif_orig : [16] -> gf_t -> gf_t -> {B: [SYS_T_t + 1]gf_t, C: [SYS_T_t + 1]gf_t, b : gf_t, L : [16]} -> {B: [SYS_T_t + 1]gf_t, C: [SYS_T_t + 1]gf_t, b : gf_t, L : [16]}
+modif_orig N d f data =  {B = B_final, C = C_final, b = b_final, L = L_final}
+  where d_zero = d == 0
+        twoL_gt_N = 2*data.L > N
+        C_modif = [ gf_add Ci (gf_mul f Bi) | Ci <- data.C | Bi <- data.B ]
+        B_final = if d_zero \/ twoL_gt_N then data.B >> 1 else data.C >> 1
+        C_final = if d_zero then data.C else C_modif
+        b_final = if d_zero \/ twoL_gt_N then data.b else d
+        L_final = if d_zero \/ twoL_gt_N then data.L else N + 1 - data.L
+
+bm_eq_upto : {i} (fin i, i <= 2*SYS_T_t) => [2*SYS_T_t]gf_t -> Bit
+property bm_eq_upto s = (last datas_orig).C == (last datas).C
+  where (B_init : [SYS_T_t + 1]gf_t) = [zero, 1] # zero
+        (C_init : [SYS_T_t + 1]gf_t) = [1] # zero
+        (b_init : gf_t) = 1
+        (L_init : [16]) = 0
+        data_init = {B = B_init, C = C_init, b = b_init, L = L_init}
+        datas_orig = [data_init] # [ loop_N_orig s N data' | data' <- datas | N <- [0 .. <i] ]
+        datas = [data_init] # [ loop_N s N data' | data' <- datas | N <- [0 .. <i] ]
+
+property loop_eq x N k = (N < 2*SYS_T) /\ (all gf_valid x) ==> loop_N x N k == loop_N_orig x N k
+
+property modif_eq N d f data = (N < 0x8000) /\ (d < 0x8001) /\ (data.L < 0x4001) ==> (modif N d f data) == (modif_orig N d f data)
+
+prop : [16] -> Bit
+property prop d = (d < 0x8001) ==> (d == 0) == (  (((d - 1) >> 15) - 1) != 0xffff)
+
+blah : {n} (n >= 1, fin n) => [n] -> [n] -> [n] -> Bit
+property blah k b d = (k >$ 0) ==> (b && ~mle) || (d && mle) == if (k == 0) then b else d
+  where mle = ((k - 1) >> `n) - 1
+
+assoc : {n} (n >= 1, fin n) => [n] -> [n] -> [n] -> Bit
+assoc x y z = (x || y) && z == (x && z) || (y && z)
