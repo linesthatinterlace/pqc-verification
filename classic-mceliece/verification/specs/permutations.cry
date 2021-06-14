@@ -2,8 +2,6 @@ module permutations where
 import helper
 
 newtype Perm n = { perm : [n]Integer }
-type miso n = min 1 n
-type twoi m = 2 * 2 ^^ (m - 1) == 2 ^^ m
 
 hammingWeight : {n} (fin n) => [n] -> Integer
 hammingWeight = foldl' (\z b -> if b then z + 1 else z) 0
