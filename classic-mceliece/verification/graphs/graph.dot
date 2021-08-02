@@ -38,6 +38,10 @@ digraph G {
       label="int32_sort.h";
       int32_sort [shape=box,fontsize=22,label="int32_sort"];
     }
+    subgraph "cluster_uint64_sort.h" {
+      label="uint64_sort.h";
+      uint64_sort [shape=box,fontsize=22,label="uint64_sort"];
+    }
   }
   subgraph "cluster_util.c" {
     label="util.c";
@@ -97,7 +101,7 @@ digraph G {
     subgraph "cluster_pk_gen.c" {
       label="pk_gen.c";
       pk_gen [shape=box,fontsize=22,label="pk_gen"];
-      pk_gen -> {load_gf bitrev gf_inv gf_mul};
+      pk_gen -> {load_gf bitrev gf_inv gf_mul	uint64_sort};
     }
     subgraph "cluster_encrypt.c" {
       label="encrypt.c";
