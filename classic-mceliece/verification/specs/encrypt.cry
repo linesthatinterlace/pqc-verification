@@ -1,0 +1,43 @@
+// mceliece348864
+
+module encrypt where
+
+import helper
+import params
+
+same_mask : [16] -> [16] -> [8]
+same_mask x y = repeat (x == y)
+
+b_func : [8] -> [8]
+b_func b_0 = b_4
+  where b_1 = b_0 ^ (b_0 >> 4)
+        b_2 = b_1 ^ (b_1 >> 2)
+        b_3 = b_2 ^ (b_2 >> 1)
+        b_4 = b_3 && 1
+
+b_func' : [8] -> [8]
+b_func' x = zext [f2Add x]
+
+property b_func_eq x = b_func x == b_func' x
+
+f2Add : {n} (fin n) => [n] -> Bit
+f2Add = foldr (^) False
+
+f2DotProduct : {n} (fin n) => [n] -> [n] -> Bit
+f2DotProduct v w = f2Add <~ zipWith (&&) v w
+
+f2VectorMult : {n, m} (fin m) => [n][m] -> [m] -> [n]
+f2VectorMult ws v = [f2DotProduct w v | w <- ws]
+
+encrypt_matrix : [PK_NROWS_t][PK_NCOLS_t] -> [SYS_N_t] -> [PK_NROWS_t]
+encrypt_matrix mss e = f2VectorMult mss' e
+  where mss' = blockConcatLR identityMatrix mss
+
+packageSyndrome : [PK_NROWS_t] -> [SYND_BYTES_t][8]
+packageSyndrome = undefined
+
+identityMatrix : {n} (fin n, n >=1) => [n][n]
+identityMatrix @ i = 1 <<< (`n - i - 1)
+
+blockConcatLR : {n, a, b} (fin a) => [n][a] -> [n][b] -> [n][a + b]
+blockConcatLR xss yss = [ xs # ys | xs <- xss | ys <- yss ]

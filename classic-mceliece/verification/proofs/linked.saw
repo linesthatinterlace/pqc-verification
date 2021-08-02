@@ -15,6 +15,7 @@ import "../specs/root.cry";
 import "../specs/synd.cry";
 import "../specs/transpose.cry";
 import "../specs/bm.cry";
+import "../specs/encrypt.cry";
 
 // Params and Definitions
 
@@ -239,6 +240,21 @@ let synd_loop_spec = do {
   llvm_points_to pin (llvm_term {{ synd_loop f li c in_v }});
 };
 
+let synd_loop_2_spec = do {
+  // Initialise variable(s).
+  (in_v, pin) <- ptr_to_fresh "in" (llvm_array (eval_int {{2*SYS_T : [width 2*SYS_T_t]}}) gf_type);
+  (f, pf) <- ptr_to_fresh_readonly "f" (llvm_array (eval_int {{SYS_T + 1 : [width (SYS_T_t + 1)]}}) gf_type);
+  li <- llvm_fresh_var "li" gf_type;
+  c <- llvm_fresh_var "c" gf_type;
+
+  // Run function.
+  llvm_execute_func [pin, pf, llvm_term li, llvm_term c];
+
+  // Result is equivalent to Cryptol function.
+  llvm_points_to pin (llvm_term {{ synd_loop_2 f li c in_v }});
+};
+
+
 /////////////// transpose.c specs ///////////////
 let transpose_64x64_spec = do {
   // Initialise variable(s).
@@ -265,6 +281,75 @@ let bm_spec = do {
   llvm_points_to pout (llvm_term {{ bm s }});
 };
 
+let bm_calc_spec = do {
+  // Initialise variable(s).
+  pd <- llvm_alloc gf_type;
+  (s, ps) <- ptr_to_fresh_readonly "in" (llvm_array (eval_int {{2*SYS_T : [width 2*SYS_T_t]}}) gf_type);
+  (C, pC) <- ptr_to_fresh_readonly "C" (llvm_array (eval_int {{SYS_T + 1 : [width (SYS_T_t + 1)]}}) gf_type);
+  N <- llvm_fresh_var "N" (llvm_int 16);
+
+  llvm_precond {{ N < 2*SYS_T }};
+  // Run function.
+  llvm_execute_func [pd, ps, pC, llvm_term N];
+
+  // Result is equivalent to Cryptol function.
+  llvm_points_to pd (llvm_term {{ bm_calc s C N }});
+};
+
+let bm_modif_spec = do {
+  // Initialise variable(s).
+    // (const uint16_t N, const gf d, gf *B, gf *C, gf *b_pt, uint16_t *L_pt)
+  N <- llvm_fresh_var "N" (llvm_int 16);
+  d <- llvm_fresh_var "d" gf_type;
+  (B, pB) <- ptr_to_fresh "B" (llvm_array (eval_int {{SYS_T + 1 : [width (SYS_T_t + 1)]}}) gf_type);
+  (C, pC) <- ptr_to_fresh "C" (llvm_array (eval_int {{SYS_T + 1 : [width (SYS_T_t + 1)]}}) gf_type);
+  (b, pb) <- ptr_to_fresh "b" gf_type;
+  (L, pL) <- ptr_to_fresh "L" (llvm_int 16);
+
+  // Run function.
+  llvm_execute_func [llvm_term N, llvm_term d, pB, pC, pb, pL];
+  let {{ (B_final, C_final, b_final, L_final) = bm_modif N d (B, C, b, L) }};
+  // Result is equivalent to Cryptol function.
+  llvm_points_to pB (llvm_term {{ B_final }});
+  llvm_points_to pC (llvm_term {{ C_final }});
+  llvm_points_to pb (llvm_term {{ b_final }});
+  llvm_points_to pL (llvm_term {{ L_final }});
+};
+
+let bm_loop_spec = do {
+  // Initialise variable(s).
+  (s, ps) <- ptr_to_fresh_readonly "in" (llvm_array (eval_int {{2*SYS_T : [width 2*SYS_T_t]}}) gf_type);
+  N <- llvm_fresh_var "N" (llvm_int 16);
+  (B, pB) <- ptr_to_fresh "B" (llvm_array (eval_int {{SYS_T + 1 : [width (SYS_T_t + 1)]}}) gf_type);
+  (C, pC) <- ptr_to_fresh "C" (llvm_array (eval_int {{SYS_T + 1 : [width (SYS_T_t + 1)]}}) gf_type);
+  (b, pb) <- ptr_to_fresh "b" gf_type;
+  (L, pL) <- ptr_to_fresh "L" (llvm_int 16);
+
+  llvm_precond {{ N < 2*SYS_T }};
+  // Run function.
+  llvm_execute_func [ps, llvm_term N, pB, pC, pb, pL];
+  let {{ (B_final, C_final, b_final, L_final) = bm_loop s N (B, C, b, L) }};
+  // Result is equivalent to Cryptol function.
+  llvm_points_to pB (llvm_term {{ B_final }});
+  llvm_points_to pC (llvm_term {{ C_final }});
+  llvm_points_to pb (llvm_term {{ b_final }});
+  llvm_points_to pL (llvm_term {{ L_final }});
+};
+
+/////////////// encrypt.c specs ///////////////
+let same_mask_spec = do {
+  // Initialise variable(s).
+  x <- llvm_fresh_var "x" (llvm_int 16);
+  y <- llvm_fresh_var "y" (llvm_int 16);
+
+  // Run function.
+  llvm_execute_func [llvm_term x, llvm_term y];
+
+  // Result is equivalent to Cryptol function.
+  llvm_return (llvm_term {{ same_mask x y }});
+};
+
+
 /////////////// Proofs ///////////////
 
 enable_experimental;
@@ -289,17 +374,26 @@ let main : TopLevel () = do {
   store8_ov <- llvm_verify linked_mod "store8" [] false store8_spec w4_z3;
   bitrev_ov <- llvm_verify linked_mod "bitrev" [] false bitrev_spec w4_z3;
 
-  //synd_loop_2_ov <- llvm_verify linked_mod "synd_loop_2" [gf_inv_ov, gf_add_ov, gf_mul_ov] false synd_loop_2_spec (unint_z3 ["gf_mul", "gf_inv", "gf_add"]);
-  //synd_outer_2_ov <- llvm_verify linked_mod "synd_outer_2" [synd_loop_2_ov, root_ov] true synd_spec (unint_z3 ["root", "synd_loop_2_ov"]);
   synd_loop_ov <- llvm_verify linked_mod "synd_loop" [eval_ov, gf_inv_ov, gf_add_ov, gf_mul_ov] false synd_loop_spec (w4_unint_z3 ["gf_mul", "gf_inv", "gf_add", "eval"]);
+  synd_loop_2_ov <- llvm_verify linked_mod "synd_loop_2" [eval_ov, gf_inv_ov, gf_add_ov, gf_mul_ov] false synd_loop_2_spec (w4_unint_z3 ["gf_mul", "gf_inv", "gf_add", "eval"]);
 
-  //synd_outer_ov <- llvm_verify linked_mod "synd_outer" [synd_loop_ov] false synd_spec (unint_z3 ["synd_loop"]);
-  synd_outer_ov <- llvm_unsafe_assume_spec linked_mod "synd" synd_spec;
+  // Can't prove - performance?
+  //synd_outer_ov <- llvm_verify linked_mod "synd_outer" [synd_loop_ov] false synd_spec (w4_unint_z3 ["synd_loop"]);
 
   transpose_64x64_ov <- llvm_verify linked_mod "transpose_64x64" [] false transpose_64x64_spec boolector;
 
+  // "All at once" - possibly if I could get bm_calc working this would work.
   //bm_ov <- llvm_verify linked_mod "bm" [gf_mul_ov, gf_frac_ov] false bm_spec (offline_unint_smtlib2 ["gf_mul", "gf_frac"] "bm");
-
+  
+  bm_modif_ov <- llvm_verify linked_mod "bm_modif" [gf_frac_ov, gf_mul_ov] false bm_modif_spec (w4_unint_z3 ["gf_mul", "gf_frac"]);
+  
+  // Can't prove - performance.
+  //bm_calc_ov <- llvm_verify linked_mod "bm_calc" [gf_mul_ov] false bm_calc_spec (w4_unint_yices ["gf_mul"]);
+  bm_calc_ov <- llvm_unsafe_assume_spec linked_mod "bm_calc" bm_calc_spec;
+  
+  bm_loop_ov <- llvm_verify linked_mod "bm_loop" [bm_modif_ov, bm_calc_ov] false bm_loop_spec (w4_unint_z3 ["bm_modif", "bm_calc"]);
+  //bm_outer_ov <- llvm_verify linked_mod "bm_outer" [bm_loop_ov] false bm_spec (w4_unint_z3 ["bm_loop"]);
+  same_mask_ov <- llvm_verify linked_mod "same_mask" [] false same_mask_spec (w4_unint_z3 []);
   summarize_verification;
 };
 

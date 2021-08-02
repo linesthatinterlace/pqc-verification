@@ -10,7 +10,7 @@ import params
 // gf
 
 gf_iszero : gf_t -> [16]
-gf_iszero a = if a == 0 then GFMASK else zero
+gf_iszero a = if a == 0 then 0x1fff else zero
 
 gf_add : gf_t -> gf_t -> gf_t
 gf_add in0 in1 = in0 ^ in1
@@ -20,8 +20,8 @@ gf_mul in0 in1 = gf_mask tmp''
   where 
     t0 = zext in0 : [32]
     t1 = zext in1 : [32]
-    zs = [zero] # [z ^ (t0 * (t1 && (1 << i))) | z <- zs | i <- [0 ... ]]
-    tmp = zs @ GFBITS
+    zs = [zero] # [z ^ (t0 * (t1 && (1 << i))) | z <- zs | i <- [0 .. <GFBITS_t]]
+    tmp = last zs
     t = tmp && (zext 0x7FC000)
     tmp' = ((tmp ^ (t >> 9)) ^ (t >> 12))
     t' = tmp' && (zext 0x3000)
@@ -60,6 +60,7 @@ gf_mul' : gf_t -> gf_t -> gf_t
 gf_mul' in0 in1 = pmod (pmult in0 in1) param_f
 
 property mul_eq x y = (gf_valid x) ==> ((gf_valid y) ==> (gf_mul x y == gf_mul' x y))
+
 gf_sq' : gf_t -> gf_t
 gf_sq' in = gf_mul' in in
 

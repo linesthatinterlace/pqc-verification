@@ -21,12 +21,3 @@ error_l_alt = map (\x -> x == zero) ~~> bits_bytes
 
 // Proven in 4.139s in Yices (SBV)
 property error_eq images = error_l images == error_l_alt images
-
-/*	for (i = 0; i < SYS_N; i++)
-	{
-		t = gf_iszero(images[i]) & 1;
-
-		e[ i/8 ] |= t << (i%8);
-		w += t;
-
-	}*/
