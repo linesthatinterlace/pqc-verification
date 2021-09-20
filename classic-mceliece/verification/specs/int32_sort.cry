@@ -12,6 +12,9 @@ int32_sorted : {n} (fin n) => [n][32] -> Bool
 int32_sorted xs = all (\(x, y) -> x <=$ y) (zip xs' xs)
   where xs' = update (xs>>1) 0 int32_BOTTOM
 
+int32_MINMAX : ([32], [32]) -> ([32], [32])
+int32_MINMAX (a, b) = (smin a b, smax a b)
+
 smin : {a} (SignedCmp a) => a -> a -> a
 smin x y = if x <$ y then x else y
 
@@ -26,32 +29,50 @@ int32_MINMAX' (a, b) = (a ^ c_4, b ^ c_4)
         c_3 = c_2 >>$ 31
         c_4 = c_3 && ab
 
+
+uint64_MINMAX : ([64], [64]) -> ([64], [64])
+uint64_MINMAX (a, b) = (min a b, max a b)
+
+uint64_MINMAX' : ([64], [64]) -> ([64], [64])
+uint64_MINMAX' (a, b) = (a ^ c_4, b ^ c_4)
+  where c_1 = b - a
+        c_2 = c_1 >> 63
+        c_3 = -c_2
+        c_4 = c_3 && (a ^ b)
+
+uint64_MINMAX'' : ([64], [64]) -> ([64], [64])
+uint64_MINMAX'' (a, b) = (a ^ c_4, b ^ c_4)
+  where ab = a ^ b
+        c_1 = (b - a) ^ ab
+        c_2 = c_1 >> 63
+        c_3 = -c_2
+        c_4 = c_3 && (a ^ b)
+
 property int32_minmax_equal (x, y) = int32_MINMAX (x, y) == int32_MINMAX' (x, y)
 
-int32_sort_n_sorted : {n} (fin n) => [n][32] -> Bool
-property int32_sort_n_sorted xs = int32_sorted (int32_sort xs)
+property uint64_minmax_equal (x, y) = (max x y - min x y < 0x8000000000000000) ==> uint64_MINMAX (x, y) == uint64_MINMAX'' (x, y)
 
-int32_sort'_m_sorted : {m} (lgm m) => [m][32] -> Bool
-property int32_sort'_m_sorted xs = int32_sorted (int32_sort' xs)
-
-int32_MINMAX : ([32], [32]) -> ([32], [32])
-int32_MINMAX (a, b) = (smin a b, smax a b)
-
-int32_MINMAX_var_j_list j (x, xs) = (pair_min, update xs j pair_max)
-  where (pair_min, pair_max) = int32_MINMAX (x, (xs @ j))
-
-int32_MINMAX_i_j_list (i, j) xs = update final_xs i final_xi
-  where (final_xi, final_xs) = int32_MINMAX_var_j_list j ((xs @ i), xs)
+int32_MINMAX_swap : {n, a} (Integral a) => (a, a) -> [n][32] -> [n][32]
+int32_MINMAX_swap (i, j) xs = updates xs [i, j] [final_xi, final_xj]
+  where (final_xi, final_xj) = int32_MINMAX (xs @ i, xs @ j)
 
 int32_sort : {m} (fin m) => [m][32] -> [m][32]
 int32_sort xs_init = last xss
-  where xss = [xs_init] # [ if (s.0 >= s.1) \/ (s.0 >= `m) \/ (s.1 >= `m) then xs else int32_MINMAX_i_j_list s xs | xs <- xss | s <- syndrome]
+  where xss = [xs_init] # [ if (s.0 >= s.1) \/ (s.0 >= `m) \/ (s.1 >= `m) then xs else int32_MINMAX_swap s xs | xs <- xss | s <- syndrome]
         syndrome = join <~ sort_syndrome`{lg2 m}
+
+int32_sort'' : {m} (fin m, 2 ^^ lg2 m >= m) => [m][32] -> [m][32]
+int32_sort'' xs_init = drop <~ int32_sort_aux`{lg2 m} (xs_init # ~zero)
+
+int32_sort_aux : {t} (fin t) => [2^^t][32] -> [2^^t][32]
+int32_sort_aux xs_init = last xss
+  where xss = [xs_init] # [ if (s.0 >= s.1) then xs else int32_MINMAX_swap s xs | xs <- xss | s <- syndrome]
+        syndrome = join <~ sort_syndrome`{t}
 
 sort_syndrome : {d} (fin d) => [d*d][2^^d](Integer, Integer)
 sort_syndrome = [[(n, partner n l p) | n <- [0 .. 2^^d - 1]] | l <- take`{d} [1 ... ], p <- take`{d} [1 ... ]]
   where partner n l p = if p > l then n else
-                        if p == 1 then toInteger ((fromInteger n) ^ ((1 << l) >> 1) : [d + 1])
+                        if p == 1 then toInteger ((fromInteger n) ^ (1 << (l - 1)) : [d + 1])
                         else  if (sn == 0) || (sn == box - 1) then n
                               else if (sn % 2 == 0) then n - scale else n + scale
                           where (scale, box) = (2^^(l - p), 2^^p)
@@ -59,34 +80,76 @@ sort_syndrome = [[(n, partner n l p) | n <- [0 .. 2^^d - 1]] | l <- take`{d} [1 
 
 type constraint lgm m = (fin m, 1 + lg2 m >= width m)
 
-int32_sort' : {m} (lgm m) => [m][32] -> [m][32]
+p_vals : {m} (fin m) => [lg2 m]Integer
+p_vals = reverse <~ take`{lg2 m} [2^^i | i <- [0 ... ]]
+
+
+int32_sort' : {m} (fin m) => [m][32] -> [m][32]
 int32_sort' xs_init = last xss
-  where xss = [xs_init] # [ loop_p p xs | xs <- xss | p <- p_vals`{m} ]
+  where xss = [xs_init] #
+              [ loop_p p xs 
+              | xs <- xss
+              | p <- p_vals`{m}
+              ]
 
-p_vals : {m} (fin m) => [lg2 m][lg2 m + 1]
-p_vals = [1 << i | i <- reverse <~ take`{lg2 m} [0 ... ]]
 
-i_vals : {m} (fin m) => [m][lg2 m + 1]
-i_vals = take`{m} [0 ... ]
+loop_p : {m} (fin m) => Integer -> [m][32] -> [m][32]
+loop_p p xs_init = (last xsps_2).0
+  where xss_1 =  [xs_init] #
+                  [ loop_i_1 p i xs
+                  | xs <- xss_1
+                  | i <- [0 ...]
+                  ]
+        xs_postp = (xss_1 @ (`m - p))
+        xsps_2 =  [(xs_postp, 0)] #
+                  [ loop_q p q xsp
+                  | xsp <- xsps_2
+                  | q <- p_vals`{m}
+                  ]
 
-loop_p : {m} (lgm m) => [lg2 m + 1] -> [m][32] -> [m][32]
-loop_p p xs_init = last xss_2
-  where xss_1 = [xs_init] # [ (loop_i_1 p) i xs | xs <- xss_1 | i <- i_vals`{m} ]
-        xss_2 = [last xss_1] # [ (loop_q p) q xs | xs <- xss_2 | q <- p_vals`{m} ]
 
-loop_q : {m} (lgm m) => [lg2 m + 1] -> [lg2 m + 1] -> [m][32] -> [m][32]
-loop_q p q xs_init =  if q <= p then xs_init else last xss
-                        where xss = [xs_init] # [ (loop_i_2 p q) i xs | xs <- xss | i <- i_vals`{m} ]
+loop_i_1 : {m} (fin m) => Integer -> Integer -> [m][32] -> [m][32]
+loop_i_1 p i xs =  if ((fromInteger i) && (fromInteger p)) == (zero : [64])
+                      then int32_MINMAX_swap (i, i + p) xs
+                      else xs
 
-loop_i_1 : {m} (lgm m) => [lg2 m + 1] -> [lg2 m + 1]-> [m][32] -> [m][32]
-loop_i_1 p i xs =  if (i >= `m - p) \/ ((i && p) != zero) then xs else int32_MINMAX_i_j_list (i, i + p) xs
 
-loop_i_2 : {m} (lgm m) => [lg2 m + 1] -> [lg2 m + 1] -> [lg2 m + 1]-> [m][32] -> [m][32]
-loop_i_2 p q i xs_init =  if (i >= `m - q) \/ ((q != (p_vals`{m} @ 0)) /\ (i < `m - q - q)) \/ ((i && p) != zero) then xs_init else last xss
-                            where xss = [xs_init] # [if (r > q) \/ (r <= p) then xs else int32_MINMAX_i_j_list (i + p, i + r) xs | xs <- xss | r <- p_vals`{m}]
+loop_q : {m} (fin m) => Integer -> Integer -> ([m][32], Integer) -> ([m][32], Integer)
+loop_q p q (xs_init, i) =  if q <= p
+                      then (xs_init, i)
+                      else (xsps @ (`m - q - i))
+                      where xsps =  [(xs_init, i)] #
+                                    [ loop_i_2`{m} p q xsp
+                                    | xsp <- xsps
+                                    ]
 
-sort_eq_sort' : {n} (1 + lg2 n >= width n, fin n) => [n][32] -> Bit
+
+loop_i_2 : {m} (fin m) => Integer -> Integer -> ([m][32], Integer) -> ([m][32], Integer)
+loop_i_2 p q (xs_init, i) = if ((fromInteger i) && (fromInteger p)) == (zero : [64])
+                            then (last xss, i + 1)
+                            else (xs_init, i + 1)
+                            where xss = [xs_init] # 
+                                        [ loop_r p q r i xs
+                                        | xs <- xss
+                                        | r <- p_vals`{m}
+                                        ]
+
+loop_r : {m} (fin m) => Integer -> Integer -> Integer -> Integer -> [m][32] -> [m][32]
+loop_r p q r i xs =  if (r > q)
+          then xs
+          else  if (r <= p) 
+                then xs
+                else int32_MINMAX_swap (i + p, i + r) xs
+
+sort_eq_sort' : {n} (fin n, 2 ^^ lg2 n >= n) => [n][32] -> Bit
 sort_eq_sort' xs = int32_sort xs == int32_sort' xs
+
+int32_sort_n_sorted : {n} (fin n, 2 ^^ lg2 n >= n) => [n][32] -> Bool
+property int32_sort_n_sorted xs = int32_sorted (int32_sort xs)
+
+int32_sort'_m_sorted : {m} (fin m) => [m][32] -> Bool
+property int32_sort'_m_sorted xs = int32_sorted (int32_sort' xs)
+
 
 /*
 
@@ -126,12 +189,12 @@ property int32_minmax_equal (x, y) = int32_MINMAX (x, y) == int32_MINMAX' (x, y)
 int32_MINMAX_var_j_list j (x, xs) = (pair_min, update xs j pair_max)
   where (pair_min, pair_max) = int32_MINMAX (x, (xs @ j))
 
-//int32_MINMAX_i_j_list : {m, ix, jx} (Integral ix, Integral jx) => (ix, jx) -> [m][32] -> [m][32]
-int32_MINMAX_i_j_list (i, j) xs = if (i >= length xs \/ j >= length xs) then xs else update final_xs i final_xi
+//int32_MINMAX_swap : {m, ix, jx} (Integral ix, Integral jx) => (ix, jx) -> [m][32] -> [m][32]
+int32_MINMAX_swap (i, j) xs = if (i >= length xs \/ j >= length xs) then xs else update final_xs i final_xi
   where (final_xi, final_xs) = int32_MINMAX_var_j_list j ((xs @ i), xs)
 
-int32_MINMAX_i_js_list : {n, m, ix, jx} (Integral ix, Integral jx, fin n) => (ix, [n]jx) -> [m][32] -> [m][32]
-int32_MINMAX_i_js_list (i, js) xs = update final_xs i final_xi
+int32_MINMAX_swap : {n, m, ix, jx} (Integral ix, Integral jx, fin n) => (ix, [n]jx) -> [m][32] -> [m][32]
+int32_MINMAX_swap (i, js) xs = update final_xs i final_xi
   where zs = [((xs @ i), xs)] # [ int32_MINMAX_var_j_list j z | z <- zs | j <- js ]
         (final_xi, final_xs) = last zs
 
@@ -139,7 +202,7 @@ int32_MINMAX_i_js_list (i, js) xs = update final_xs i final_xi
 
 int32_sort_syndrome : {m, n} (fin n, fin m) => [n](Integer, Integer) -> [m][32] -> [m][32]
 int32_sort_syndrome syndrome xs_init = last xss
-  where xss = [xs_init] # [int32_MINMAX_i_j_list s xs | xs <- xss | s <- syndrome]
+  where xss = [xs_init] # [int32_MINMAX_swap s xs | xs <- xss | s <- syndrome]
 
 sort_2 = [                                                                (0, 1)                                                        ]
 sort_3 = [                        (0, 2),                                 (0, 1),                         (1, 2)                        ]

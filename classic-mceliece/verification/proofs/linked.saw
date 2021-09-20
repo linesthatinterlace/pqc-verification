@@ -16,6 +16,7 @@ import "../specs/synd.cry";
 import "../specs/transpose.cry";
 import "../specs/bm.cry";
 import "../specs/encrypt.cry";
+import "../specs/int32_sort.cry";
 
 // Params and Definitions
 
@@ -63,6 +64,21 @@ let gf_mul_spec = do {
 
 };
 
+let gf_mul'_spec = do {
+  // Initialise variable(s).
+  x <- llvm_fresh_var "in0" gf_type;
+  y <- llvm_fresh_var "in1" gf_type;
+
+  llvm_precond {{ ((gf_valid x) /\ (gf_valid y)) }};
+
+  // Run function.
+  llvm_execute_func [llvm_term x, llvm_term y];
+
+  // Result is equivalent to Cryptol function.
+  llvm_return (llvm_term {{ gf_mul' x y }});
+
+};
+
 let gf_sq_spec = do {
   // Initialise variable(s).
   x <- llvm_fresh_var "in" gf_type;
@@ -74,6 +90,19 @@ let gf_sq_spec = do {
   llvm_return (llvm_term {{ gf_sq x }});
 };
 
+let gf_sq'_spec = do {
+
+  // Initialise variable(s).
+  x <- llvm_fresh_var "in" gf_type;
+
+  llvm_precond {{ gf_valid x }};
+
+  // Run function.
+  llvm_execute_func [llvm_term x];
+
+  // Result is equivalent to Cryptol function.
+  llvm_return (llvm_term {{ gf_sq' x }});
+};
 
 let gf_inv_spec = do {
   // Initialise variable(s).
@@ -84,6 +113,19 @@ let gf_inv_spec = do {
 
   // Result is equivalent to Cryptol function.
   llvm_return (llvm_term {{ gf_inv x }});
+};
+
+let gf_inv'_spec = do {
+  // Initialise variable(s).
+  x <- llvm_fresh_var "in" gf_type;
+
+  llvm_precond {{ gf_valid x }};
+
+  // Run function.
+  llvm_execute_func [llvm_term x];
+
+  // Result is equivalent to Cryptol function.
+  llvm_return (llvm_term {{ gf_inv' x }});
 };
 
 let gf_frac_spec = do {
@@ -97,6 +139,20 @@ let gf_frac_spec = do {
 
   // Result is equivalent to Cryptol function.
   llvm_return (llvm_term {{ gf_frac x y }});
+};
+
+let gf_frac'_spec = do {
+  // Initialise variable(s).
+  x <- llvm_fresh_var "den" gf_type;
+  y <- llvm_fresh_var "num" gf_type;
+
+  llvm_precond {{ ((gf_valid x) /\ (gf_valid y)) }};
+
+  // Run function.
+  llvm_execute_func [llvm_term x, llvm_term y];
+
+  // Result is equivalent to Cryptol function.
+  llvm_return (llvm_term {{ gf_frac' x y }});
 };
 
 let GF_mul_spec = do {
@@ -349,23 +405,75 @@ let same_mask_spec = do {
   llvm_return (llvm_term {{ same_mask x y }});
 };
 
+let syndrome_spec = do {
+  // Initialise variable(s).
+  ps <- llvm_alloc (llvm_array (eval_int {{SYND_BYTES : [width SYND_BYTES_t]}}) (llvm_int 8));
+  (pk, ppk) <- ptr_to_fresh_readonly "pk" (llvm_array (eval_int {{PK_NROWS*PK_ROW_BYTES : [width PK_NROWS_t*PK_ROW_BYTES_t]}}) (llvm_int 8));
+  (e, pe) <- ptr_to_fresh_readonly "e" (llvm_array (eval_int {{SYS_N/8 : [width SYS_N_t]}}) (llvm_int 8));
+
+  // Run function.
+  llvm_execute_func [ps, ppk, pe];
+
+  // Result is equivalent to Cryptol function.
+  llvm_points_to ps (llvm_term {{ syndrome pk e }});
+};
+
+let b_func_spec = do {
+  // Initialise variable(s).
+  (b, pb) <- ptr_to_fresh "b" (llvm_int 8);
+
+  // Run function.
+  llvm_execute_func [pb];
+
+  // Result is equivalent to Cryptol function.
+  llvm_points_to pb (llvm_term {{ b_func b }});
+};
+
+let syndrome_loop_spec = do {
+  // Initialise variable(s).
+  (s, ps) <- ptr_to_fresh "s" (llvm_array (eval_int {{SYND_BYTES : [width SYND_BYTES_t]}}) (llvm_int 8));
+  i <- llvm_fresh_var "i" (llvm_int 16);
+  (pk, ppk) <- ptr_to_fresh_readonly "pk" (llvm_array (eval_int {{PK_ROW_BYTES : [width PK_ROW_BYTES_t]}}) (llvm_int 8));
+  (e, pe) <- ptr_to_fresh_readonly "pk" (llvm_array (eval_int {{SYS_N/8 : [width SYS_N_t]}}) (llvm_int 8));
+  llvm_precond {{ i < PK_NROWS }};
+  // Run function.
+  llvm_execute_func [ppk, llvm_term i, ps, pe];
+
+  // Result is equivalent to Cryptol function.
+  llvm_points_to ps (llvm_term {{ syndrome_loop pk i s e}});
+};
+
+let int32_sort_spec = do {
+  // Initialise variable(s).
+  (x, px) <- ptr_to_fresh_readonly "x" (llvm_array 2 (llvm_int 32));
+
+  // Run function.
+  llvm_execute_func [px, llvm_term {{2 : [64]}}];
+
+  // Result is equivalent to Cryptol function.
+  llvm_points_to px (llvm_term {{ int32_sort x }});
+};
 
 /////////////// Proofs ///////////////
 
 enable_experimental;
 
 let main : TopLevel () = do {
-  
-  gf_iszero_ov <- llvm_verify linked_mod "gf_iszero" [] false gf_iszero_spec w4_z3;
+  int32_sort_ov <- llvm_verify linked_mod "int32_sort" [] false int32_sort_spec w4_z3;
+  /*gf_iszero_ov <- llvm_verify linked_mod "gf_iszero" [] false gf_iszero_spec w4_z3;
   gf_add_ov <- llvm_verify linked_mod "gf_add" [] false gf_add_spec w4_z3;
   gf_mul_ov <- llvm_verify linked_mod "gf_mul" [] false gf_mul_spec w4_z3;
+  //gf_mul'_ov <- llvm_verify linked_mod "gf_mul" [] false gf_mul'_spec abc;
   gf_sq_ov <- llvm_verify linked_mod "gf_sq" [] false gf_sq_spec w4_z3;
+  //gf_sq'_ov <- llvm_verify linked_mod "gf_sq" [gf_mul'_ov] false gf_sq'_spec (w4_unint_z3 ["gf_mul"]);
   gf_inv_ov <- llvm_verify linked_mod "gf_inv" [gf_mul_ov, gf_sq_ov] false gf_inv_spec (w4_unint_z3 ["gf_mul", "gf_sq"]);
+  //gf_inv'_ov <- llvm_verify linked_mod "gf_inv" [gf_mul'_ov] false gf_inv'_spec (w4_unint_z3 ["gf_mul"]);
   gf_frac_ov <- llvm_verify linked_mod "gf_frac" [gf_mul_ov, gf_inv_ov] false gf_frac_spec (w4_unint_z3 ["gf_mul", "gf_inv"]);
+  //gf_frac'_ov <- llvm_verify linked_mod "gf_frac" [gf_mul'_ov, gf_inv'_ov] false gf_frac'_spec (w4_unint_z3 ["gf_mul", "gf_inv"]);
   GF_mul_ov <- llvm_verify linked_mod "GF_mul" [gf_mul_ov] false GF_mul_spec (w4_unint_z3 ["gf_mul"]);
   
   eval_ov <- llvm_verify linked_mod "eval" [gf_add_ov, gf_mul_ov] false eval_spec (w4_unint_z3 ["gf_add", "gf_mul"]);
-  root_ov <- llvm_verify linked_mod "root" [eval_ov] true root_spec (w4_unint_z3 ["eval"]);
+  root_ov <- llvm_verify linked_mod "root" [eval_ov] false root_spec (w4_unint_z3 ["eval"]);
 
   store_gf_ov <- llvm_verify linked_mod "store_gf" [] false store_gf_spec w4_z3;
   load_gf_ov <- llvm_verify linked_mod "load_gf" [] false load_gf_spec w4_z3;
@@ -378,9 +486,11 @@ let main : TopLevel () = do {
   synd_loop_2_ov <- llvm_verify linked_mod "synd_loop_2" [eval_ov, gf_inv_ov, gf_add_ov, gf_mul_ov] false synd_loop_2_spec (w4_unint_z3 ["gf_mul", "gf_inv", "gf_add", "eval"]);
 
   // Can't prove - performance?
-  //synd_outer_ov <- llvm_verify linked_mod "synd_outer" [synd_loop_ov] false synd_spec (w4_unint_z3 ["synd_loop"]);
+  //enable_smt_array_memory_model;
+  //synd_outer_ov <- llvm_verify linked_mod "synd_outer" [synd_loop_ov] false synd_spec (offline_w4_unint_yices ["synd_loop"] "artifacts/synd_outer_smt2");
+  //disable_smt_array_memory_model;
 
-  transpose_64x64_ov <- llvm_verify linked_mod "transpose_64x64" [] false transpose_64x64_spec boolector;
+  transpose_64x64_ov <- llvm_verify linked_mod "transpose_64x64" [] false transpose_64x64_spec w4_yices;
 
   // "All at once" - possibly if I could get bm_calc working this would work.
   //bm_ov <- llvm_verify linked_mod "bm" [gf_mul_ov, gf_frac_ov] false bm_spec (offline_unint_smtlib2 ["gf_mul", "gf_frac"] "bm");
@@ -393,8 +503,14 @@ let main : TopLevel () = do {
   
   bm_loop_ov <- llvm_verify linked_mod "bm_loop" [bm_modif_ov, bm_calc_ov] false bm_loop_spec (w4_unint_z3 ["bm_modif", "bm_calc"]);
   //bm_outer_ov <- llvm_verify linked_mod "bm_outer" [bm_loop_ov] false bm_spec (w4_unint_z3 ["bm_loop"]);
-  same_mask_ov <- llvm_verify linked_mod "same_mask" [] false same_mask_spec (w4_unint_z3 []);
-  summarize_verification;
+  
+  same_mask_ov <- llvm_verify linked_mod "same_mask" [] false same_mask_spec w4_z3;
+  
+  //syndrome_ov <- llvm_verify linked_mod "syndrome" [] false syndrome_spec w4_z3;
+  b_func_ov <- llvm_verify linked_mod "b_func" [] false b_func_spec w4_z3;
+  syndrome_loop_ov <- llvm_verify linked_mod "syndrome_loop" [b_func_ov] false syndrome_loop_spec (unint_z3 ["b_func"]);
+  //syndrome_outer_ov <- llvm_verify linked_mod "syndrome" [syndrome_loop_ov] false syndrome_spec (w4_unint_z3 ["syndrome_loop"]);
+  */summarize_verification;
 };
 
 

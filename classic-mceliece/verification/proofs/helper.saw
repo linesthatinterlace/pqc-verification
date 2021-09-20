@@ -15,3 +15,4 @@ let ptr_to_fresh_readonly n ty = do {
 };
 
 let w4_z3 = w4_unint_z3 [];
+let w4_yices = w4_unint_yices [];
