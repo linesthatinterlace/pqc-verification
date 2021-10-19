@@ -12,14 +12,14 @@ int32_sorted : {n} (fin n) => [n][32] -> Bool
 int32_sorted xs = all (\(x, y) -> x <=$ y) (zip xs' xs)
   where xs' = update (xs>>1) 0 int32_BOTTOM
 
-int32_MINMAX : ([32], [32]) -> ([32], [32])
-int32_MINMAX (a, b) = (smin a b, smax a b)
-
 smin : {a} (SignedCmp a) => a -> a -> a
 smin x y = if x <$ y then x else y
 
 smax : {a} (SignedCmp a) => a -> a -> a
 smax x y = if x >$ y then x else y
+
+int32_MINMAX : ([32], [32]) -> ([32], [32])
+int32_MINMAX (a, b) = (smin a b, smax a b)
 
 int32_MINMAX' : ([32], [32]) -> ([32], [32])
 int32_MINMAX' (a, b) = (a ^ c_4, b ^ c_4)
@@ -40,17 +40,19 @@ uint64_MINMAX' (a, b) = (a ^ c_4, b ^ c_4)
         c_3 = -c_2
         c_4 = c_3 && (a ^ b)
 
-uint64_MINMAX'' : ([64], [64]) -> ([64], [64])
-uint64_MINMAX'' (a, b) = (a ^ c_4, b ^ c_4)
-  where ab = a ^ b
-        c_1 = (b - a) ^ ab
-        c_2 = c_1 >> 63
-        c_3 = -c_2
-        c_4 = c_3 && (a ^ b)
+property int32_minmax_equal (a, b) = int32_MINMAX (a, b) == int32_MINMAX' (a, b)
 
-property int32_minmax_equal (x, y) = int32_MINMAX (x, y) == int32_MINMAX' (x, y)
+property uint64_minmax_symm (a, b) = uint64_MINMAX (a, b) == uint64_MINMAX (b, a)
+property uint64_minmax'_symm (a, b) = uint64_MINMAX' (a, b) == uint64_MINMAX' (b, a)
+property uint64_minmax'_symm_iff (a, b) = uint64_MINMAX' (a, b) == uint64_MINMAX' (b, a) <==> max a b - min a b != 2^^63
 
-property uint64_minmax_equal (x, y) = (max x y - min x y < 0x8000000000000000) ==> uint64_MINMAX (x, y) == uint64_MINMAX'' (x, y)
+property uint64_minmax_equal (a, b) = uint64_MINMAX (a, b) == uint64_MINMAX' (a, b)
+
+property uint64_minmax_equal_if (a, b) = (max a b - min a b < 2^^63) ==> uint64_minmax_equal (a, b)
+
+property uint64_minmax_equal_only_if (a, b) = uint64_minmax_equal (a, b) ==> (max a b - min a b < 2^^63)
+
+property uint64_minmax_equal_iff (a, b) = uint64_minmax_equal (a, b) <==> (max a b - min a b < 2^^63) || ((b < a) && (a - b == 2^^63))
 
 int32_MINMAX_swap : {n, a} (Integral a) => (a, a) -> [n][32] -> [n][32]
 int32_MINMAX_swap (i, j) xs = updates xs [i, j] [final_xi, final_xj]
@@ -61,13 +63,14 @@ int32_sort xs_init = last xss
   where xss = [xs_init] # [ if (s.0 >= s.1) \/ (s.0 >= `m) \/ (s.1 >= `m) then xs else int32_MINMAX_swap s xs | xs <- xss | s <- syndrome]
         syndrome = join <~ sort_syndrome`{lg2 m}
 
-int32_sort'' : {m} (fin m, 2 ^^ lg2 m >= m) => [m][32] -> [m][32]
-int32_sort'' xs_init = drop <~ int32_sort_aux`{lg2 m} (xs_init # ~zero)
+uint64_MINMAX_swap : {n, a} (Integral a) => (a, a) -> [n][64] -> [n][64]
+uint64_MINMAX_swap (i, j) xs = updates xs [i, j] [final_xi, final_xj]
+  where (final_xi, final_xj) = uint64_MINMAX (xs @ i, xs @ j)
 
-int32_sort_aux : {t} (fin t) => [2^^t][32] -> [2^^t][32]
-int32_sort_aux xs_init = last xss
-  where xss = [xs_init] # [ if (s.0 >= s.1) then xs else int32_MINMAX_swap s xs | xs <- xss | s <- syndrome]
-        syndrome = join <~ sort_syndrome`{t}
+uint64_sort : {m} (fin m) => [m][64] -> [m][64]
+uint64_sort xs_init = last xss
+  where xss = [xs_init] # [ if (s.0 >= s.1) \/ (s.0 >= `m) \/ (s.1 >= `m) then xs else uint64_MINMAX_swap s xs | xs <- xss | s <- syndrome]
+        syndrome = join <~ sort_syndrome`{lg2 m}
 
 sort_syndrome : {d} (fin d) => [d*d][2^^d](Integer, Integer)
 sort_syndrome = [[(n, partner n l p) | n <- [0 .. 2^^d - 1]] | l <- take`{d} [1 ... ], p <- take`{d} [1 ... ]]
@@ -184,7 +187,7 @@ static void int32_sort(int32_t *x,long long n)
 /*
 This is closer to how djbsort does it (though doesn't have a neat way of constructing the syndrome... the issue is, partially, that the length is uncertain.)
 
-property int32_minmax_equal (x, y) = int32_MINMAX (x, y) == int32_MINMAX' (x, y)
+property int32_minmax_equal (a, b) = int32_MINMAX (a, b) == int32_MINMAX' (a, b)
 
 int32_MINMAX_var_j_list j (x, xs) = (pair_min, update xs j pair_max)
   where (pair_min, pair_max) = int32_MINMAX (x, (xs @ j))

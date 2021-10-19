@@ -16,7 +16,7 @@ import "../specs/synd.cry";
 import "../specs/transpose.cry";
 import "../specs/bm.cry";
 import "../specs/encrypt.cry";
-import "../specs/int32_sort.cry";
+import "../specs/sort.cry";
 
 // Params and Definitions
 
@@ -443,9 +443,11 @@ let syndrome_loop_spec = do {
   llvm_points_to ps (llvm_term {{ syndrome_loop pk i s e}});
 };
 
+let int32_sort_num = 4;
+
 let int32_sort_spec = do {
   // Initialise variable(s).
-  (x, px) <- ptr_to_fresh_readonly "x" (llvm_array 2 (llvm_int 32));
+  (x, px) <- ptr_to_fresh_readonly "x" (llvm_array int32_sort_num (llvm_int 32));
 
   // Run function.
   llvm_execute_func [px, llvm_term {{2 : [64]}}];
@@ -454,12 +456,26 @@ let int32_sort_spec = do {
   llvm_points_to px (llvm_term {{ int32_sort x }});
 };
 
+let uint64_sort_num = 4;
+ 
+let uint64_sort_spec = do {
+  // Initialise variable(s).
+  (xs, pxs) <- ptr_to_fresh "xs" (llvm_array uint64_sort_num (llvm_int 64));
+  llvm_precond {{ all (\x -> x@0 == 0) xs }};
+  // Run function.
+  llvm_execute_func [pxs, llvm_term {{`uint64_sort_num : [64]}}];
+ 
+  // Result is equivalent to Cryptol function.
+  llvm_points_to pxs (llvm_term {{ uint64_sort xs }});
+};
+
 /////////////// Proofs ///////////////
 
 enable_experimental;
 
 let main : TopLevel () = do {
-  int32_sort_ov <- llvm_verify linked_mod "int32_sort" [] false int32_sort_spec w4_z3;
+  //int32_sort_ov <- llvm_verify linked_mod "int32_sort" [] false int32_sort_spec w4_z3;
+  uint64_sort_ov <- llvm_verify linked_mod "uint64_sort" [] false uint64_sort_spec w4_z3;
   /*gf_iszero_ov <- llvm_verify linked_mod "gf_iszero" [] false gf_iszero_spec w4_z3;
   gf_add_ov <- llvm_verify linked_mod "gf_add" [] false gf_add_spec w4_z3;
   gf_mul_ov <- llvm_verify linked_mod "gf_mul" [] false gf_mul_spec w4_z3;
