@@ -117,21 +117,6 @@ coerceSize xs = take <~ (xs # undefined`{[max m n - m]a})
 condSwap : {n, a, ix} (Integral ix) => Bit -> [2]ix -> [n]a -> [n]a
 condSwap c [i, j] xs = if c then updates xs [i, j] [xs @ j, xs @ i] else xs
 
-myLength : {n, a} (fin n) => [n]a -> Integer
-myLength xs =
-  if `n == 0
-  then myLength_zero`{0} xs_zero
-  else myLength_rec`{max 1 n} xs_rec
-    where 
-      xs_zero = coerceSize xs
-      xs_rec = coerceSize xs
-
-myLength_zero : {n, a} (fin n, n == 0) => [n]a -> Integer
-myLength_zero xs = 0
-
-myLength_rec : {n, a} (fin n, n >= 1) => [n]a -> Integer
-myLength_rec xs = 1 + myLength (tail xs)
-
 controlBitsToPerm : {m} (fin m) => [(2*m + 1)*2^^m] -> Perm (2*2^^m)
 controlBitsToPerm cs = last ps
   where p_init = Perm { perm = [0 .. <(2*2^^m)] }
