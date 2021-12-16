@@ -133,7 +133,7 @@ void b_func(unsigned char *b)
   *b &= 1;
 }
 
-void syndrome_loop(const unsigned char *pk_ptr, const uint16_t i, unsigned char *s, const unsigned char *e)
+void syndrome_loop(const unsigned char *e, const unsigned char *pk_ptr, const uint16_t i, unsigned char *s)
 {
   unsigned char b, row[SYS_N/8];
   int j;
@@ -166,7 +166,7 @@ void syndrome_outer(unsigned char *s, const unsigned char *pk, unsigned char *e)
 
 	for (i = 0; i < PK_NROWS; i++)
   {
-    syndrome_loop(pk_ptr, i, s, e);
+    syndrome_loop(e, pk_ptr, i, s);
     pk_ptr += PK_ROW_BYTES;
   }
 }

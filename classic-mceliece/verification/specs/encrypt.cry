@@ -5,90 +5,92 @@ module encrypt where
 import helper
 import params
 
+same_mask' : [16] -> [16] -> [8]
+same_mask' x y = drop <~ -(((zext (x ^ y) : [32]) - 1) >> 31)
+
 same_mask : [16] -> [16] -> [8]
 same_mask x y = repeat (x == y)
 
-b_func : [8] -> [8]
-b_func b_0 = b_4
+property same_mask_eq x y = same_mask x y == same_mask' x y
+
+b_func : {n} (fin n, n >=1) => [n] -> [n]
+b_func x = zext [foldr (^) False x]
+
+b_func' : [8] -> [8]
+b_func' b_0 = b_4
   where b_1 = b_0 ^ (b_0 >> 4)
         b_2 = b_1 ^ (b_1 >> 2)
         b_3 = b_2 ^ (b_2 >> 1)
         b_4 = b_3 && 1
 
-f2Add : {n} (fin n) => [n] -> Bit
-f2Add = foldr (^) False
-
-b_func' : [8] -> [8]
-b_func' x = zext [f2Add x]
-
 property b_func_eq x = b_func x == b_func' x
 
+identityMatrix : {r, c} [r][c]
+identityMatrix @ i @ j = i == j
 
 syndrome : [PK_NROWS_t*PK_ROW_BYTES_t][8] -> [SYS_N_t/8][8] -> [SYND_BYTES_t][8]
 syndrome pk e = last ss
   where pk_ptrs = split`{PK_NROWS_t} pk
-        ss = [zero] # [ syndrome_loop pk_ptr i s e | s <- ss | i <- [0 .. <PK_NROWS_t] | pk_ptr <- pk_ptrs]
+        ss = [zero] #   [ syndrome_loop e pk_ptr i s  
+                        | pk_ptr <- pk_ptrs
+                        | i <- [0 .. <PK_NROWS_t] 
+                        | s <- ss
+                        ]
 
-syndrome_loop : [PK_ROW_BYTES_t][8] -> [16] -> [SYND_BYTES_t][8] -> [SYS_N_t/8][8] -> [SYND_BYTES_t][8]
-syndrome_loop pk_ptr i s_pre e = s_post
+syndrome_loop : [SYS_N_t/8][8] -> [PK_ROW_BYTES_t][8] -> [16] -> [SYND_BYTES_t][8] -> [SYND_BYTES_t][8]
+syndrome_loop e pk_ptr i s_pre = s_post
   where row = zero # pk_ptr : [SYS_N_t/8][8] 
-        row_ored = update row (i/8) ((row @ (i/8)) || (1 << (i%8)))
-        b = b_func (foldr (^) zero (zipWith (&&) row_ored e))
+        row' = update row (i/8) ((row @ (i/8)) || (1 << (i%8)))
+        b = b_func (foldl' (^) zero (zipWith (&&) row' e))
         s_post = update s_pre (i/8) ((s_pre @ (i/8)) || (b << (i%8)))
-/*
-static void syndrome(unsigned char *s, const unsigned char *pk, unsigned char *e)
-{
-	unsigned char b, row[SYS_N/8];
-	const unsigned char *pk_ptr = pk;
 
-	int i, j;
-
-	for (i = 0; i < SYND_BYTES; i++)
-		s[i] = 0;
-
-	for (i = 0; i < PK_NROWS; i++)	
-	{
-		for (j = 0; j < SYS_N/8; j++) 
-			row[j] = 0;
-
-		for (j = 0; j < PK_ROW_BYTES; j++) 
-			row[ SYS_N/8 - PK_ROW_BYTES + j ] = pk_ptr[j];
-
-		row[i/8] |= 1 << (i%8);
-		
-		b = 0;
-		for (j = 0; j < SYS_N/8; j++)
-			b ^= row[j] & e[j];
-
-		b ^= b >> 4;
-		b ^= b >> 2;
-		b ^= b >> 1;
-		b &= 1;
-
-		s[ i/8 ] |= (b << (i%8));
-
-		pk_ptr += PK_ROW_BYTES;
-	}
-}
-*/
-/*
+syndrome' : [PK_NROWS_t*PK_ROW_BYTES_t][8] 
+            -> [SYS_N_t/8][8] 
+            -> [SYND_BYTES_t][8]
+syndrome' pk e = c0
+  where matrixT = [ join (map reverse row) 
+                  | row <- split`{PK_NROWS_t} pk
+                  ] : [PK_NROWS_t][PK_NCOLS_t]
+        matrixI = identityMatrix : [PK_NROWS_t][PK_NROWS_t]
+        matrixH = [rowI # rowT 
+                  | rowI <- matrixI
+                  | rowT <- matrixT
+                  ] : [PK_NROWS_t][SYS_N_t]
+        e_bits  = join (map reverse e) : [SYS_N_t]
+        c0_bits = [ foldr (^) zero  [ r_b && e_b 
+                                    | r_b <- row 
+                                    | e_b <- e_bits
+                                    ]
+                  | row <- matrixH 
+                  ] : [PK_NROWS_t]
+        c0      = map reverse (split c0_bits) : [SYND_BYTES_t][8]
 
 
 
-f2VectorMult : {n, m} (fin m) => [n][m] -> [m] -> [n]
-f2VectorMult ws v = [f2DotProduct w v | w <- ws]
+syndrome_eq pk e = syndrome pk e == syndrome' pk e
 
-encrypt_matrix : [PK_NROWS_t][PK_NCOLS_t] -> [SYS_N_t] -> [PK_NROWS_t]
-encrypt_matrix mss e = f2VectorMult mss' e
-  where mss' = blockConcatLR identityMatrix mss
 
-packageSyndrome : [PK_NROWS_t] -> [SYND_BYTES_t][8]
-packageSyndrome = undefined
+set_ith_bit : {n, m} (fin n, fin m, lg2 (8*n) < m) => [m] -> [n][8] -> [n][8]
+set_ith_bit i xs = update xs  (i >> 3) 
+                              (updateEnd  (xs @ (i >> 3)) 
+                                          (drop`{m - min 3 m} i) 
+                                          1 )
 
-identityMatrix : {n} (fin n, n >=1) => [n][n]
-identityMatrix @ i = 1 <<< (`n - i - 1)
+syndrome_loop' : [SYS_N_t/8][8] -> [PK_ROW_BYTES_t][8] -> [16] -> [SYND_BYTES_t][8] -> [SYND_BYTES_t][8]
+syndrome_loop' e pk_ptr i s_pre = s_post
+  where id : [SYND_BYTES_t][8]
+        id @ j = (zero # [j == i/8]) << (i%8)
+        row = id # pk_ptr : [SYS_N_t/8][8] 
+        b = b_func (foldl' (^) zero [br && be | br <- row | be <- e ])
+        s_post =  if b ! 0 then set_ith_bit i s_pre else s_pre
 
-blockConcatLR : {n, a, b} (fin a) => [n][a] -> [n][b] -> [n][a + b]
-blockConcatLR xss yss = [ xs # ys | xs <- xss | ys <- yss ]
+syndrome_loop_eq e pk_ptr i s_pre = (i < PK_NROWS) ==> (syndrome_loop e pk_ptr i s_pre == syndrome_loop' e pk_ptr i s_pre)
 
-*/
+
+blah : [16] -> [PK_ROW_BYTES_t][8] -> Bit
+blah i pk =(i < PK_NROWS) ==> (row' == row2)
+  where row = zero # pk : [SYS_N_t/8][8] 
+        row' = update row (i/8) ((row @ (i/8)) || (1 << (i%8)))
+        id : [SYND_BYTES_t][8]
+        id @ j = (zero # [j == i/8]) << (i%8)
+        row2 = id # pk : [SYS_N_t/8][8] 

@@ -65,15 +65,10 @@ void synd_loop_2(gf *out, gf *f, gf li, gf c)
 void synd_outer(gf *out, gf *f, gf *L, unsigned char *r)
 {
 	int i;
-	gf c, li;
 
 	for (i = 0; i < 2*SYS_T; i++)
 		out[i] = 0;
 
 	for (i = 0; i < SYS_N; i++)
-	{
-		c = (r[i/8] >> (i%8)) & 1;
-    li = L[i];
-    synd_loop(out, f, li, c);
-	}
+    synd_loop(out, f, L[i], (r[i/8] >> (i%8)) & 1);
 }

@@ -12,6 +12,7 @@
 /* the Berlekamp-Massey algorithm */
 /* input: s, sequence of field elements */
 /* output: out, minimal polynomial of s */
+
 void bm(gf *out, gf *s)
 {
 	int i;

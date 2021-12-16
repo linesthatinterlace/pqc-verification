@@ -10,8 +10,15 @@ infixr 100 ~~>
 infixr 1 <~
 
 (<==>) : Bit -> Bit -> Bit
-a <==> b = a ==> b && b ==> a
+a <==> b = (a ==> b) && (b ==> a)
 infixr 5 <==>
+
+(<==) : Bit -> Bit -> Bit
+a <== b = (b ==> a)
+infixr 5 <==
+
+xnor : Bit -> Bit -> Bit
+xnor a b = (a /\ b) \/ (~a /\ ~b)
 
 xor_update : {n, a, b} (Integral a, Logic b) => [n]b -> a -> b -> [n]b
 xor_update z ix a = update z ix ((z@ix) ^ a)
@@ -21,7 +28,6 @@ loadbytes = reverse ~~> join
 
 storebytes : {n} (fin n) => [n*8] -> [n][8]
 storebytes = split ~~> reverse
-
 
 /**
  * Sort a sequence of elements. Equivalent to 'sortBy (<=)'.

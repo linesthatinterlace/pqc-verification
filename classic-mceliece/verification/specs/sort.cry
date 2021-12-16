@@ -8,6 +8,7 @@ int32_BOTTOM = 0x80000000
 
 property int32_BOTTOM_min a = smin int32_BOTTOM a == int32_BOTTOM
 
+
 int32_sorted : {n} (fin n) => [n][32] -> Bool
 int32_sorted xs = all (\(x, y) -> x <=$ y) (zip xs' xs)
   where xs' = update (xs>>1) 0 int32_BOTTOM

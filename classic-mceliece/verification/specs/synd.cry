@@ -10,7 +10,7 @@ import root
 synd : [SYS_T_t + 1]gf_t -> [SYS_N_t]gf_t -> [SYS_N_t/8][8] -> [2*SYS_T_t]gf_t
 synd f L r = last zss
   where zss = [zero] # [ synd_loop f li (c i) zs | zs <- zss | i <- [0 .. <SYS_N_t] | li <- L ]
-        c i = (zext (((r@(i/8)) >> (i%8)) && 1))
+        c i' = (zero # (r@(i'/8) >> (i'%8))) && (0x0001 : gf_t)
         
 synd_loop : [SYS_T_t + 1]gf_t -> gf_t -> gf_t -> [2*SYS_T_t]gf_t -> [2*SYS_T_t]gf_t
 synd_loop f li c in = [ gf_add z (gf_mul e_inv c) | z <- in | e_inv <- e_invs ]
@@ -38,34 +38,17 @@ synd_loop_unfolded f li in = [ gf_add z e_inv | z <- in | e_inv <- e_invs ]
         e_inv_pre = gf_inv (gf_mul e e)
         e_invs = iterate (\x -> gf_mul x li) e_inv_pre
 
-// Comment - What4 doesn't like this due to a bug (now fixed but not yet upstream).
-bitget : [width (SYS_N_t - 1)] -> [SYS_N_t/8][8] -> Bit
-property bitget i r = i < SYS_N ==> bit_gf == zext [bit_bit]
-  where bit_gf = (zext (((r@(i/8)) >> (i%8)) && 1)) : [16]
-        bit_bit = (join (map reverse r)) @ i
-
 bytes_bits : [SYS_N_t/8][8] -> [SYS_N_t]
 bytes_bits r = join (map reverse r) 
 
-bits_bytes : [SYS_N_t] -> [SYS_N_t/8][8]
-bits_bytes r = map reverse (split r)
-
-banga : [SYS_N_t/8][8] -> Bit
-property banga r = join (map reverse r) == [ ((r@(i/8)) >> (i%8)) ! 0 | i <- [0 .. SYS_N_t - 1] ]
-
-// Comment: Again, What4 seems to choke on this!
 c_values : [SYS_N_t/8][8] -> [width (SYS_N_t - 1)] -> Bit
-property c_values r i = if (join (map reverse r)) @ i then c == 0x0001 else c == 0x0000
-  where c = (zext (((r@(i/8)) >> (i%8)) && 1))
-
-property c_values_exhaust r = all (c_values r) [0 .. SYS_N_t - 1]
+property  c_values r i = i < SYS_N ==> 
+          c i == zero # [(bytes_bits r) @ i]
+            where c i' = (zero # (r@(i'/8) >> (i'%8))) && (0x0001 : gf_t)
 
 // Comment - another case where "case exhaustion" is useful.
 property synd_loop_loop_2_eq f li in c = synd_loop_2 f li c in == synd_loop f li c in
 
 property synd_loop_loop_2_eq_exhaust f li in = all (synd_loop_loop_2_eq f li in) [0x0000, 0x0001]
-
-property synd_loop_eq_true f li in = synd_loop f li 0x0001 in == synd_loop_unfolded f li in
-property synd_loop_eq_false f li in = synd_loop f li 0x0000 in == in
 
 property synd_eq f L r = synd f L r == synd_unfolded f L (join (map reverse r))

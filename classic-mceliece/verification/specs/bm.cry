@@ -27,7 +27,7 @@ bm_loop s N data = bm_modif N d data
         d = bm_calc s C N
 
 bm_calc : [2*SYS_T_t]gf_t -> [SYS_T_t + 1]gf_t -> [16] -> gf_t
-bm_calc s C N = last ds
+bm_calc s C N = if N < 2*SYS_T then last ds else ds@0
   where ds = [zero] # [ if i <= N
                         then d' ^ (gf_mul ( C@i ) ( s@(N - i) ) )
                         else d'
@@ -59,11 +59,11 @@ bm_paper s = reverse C_final
 bm_loop_paper : [2*SYS_T_t]gf_t -> [16] -> BM_Loop_Data -> BM_Loop_Data
 bm_loop_paper s N data = bm_modif_paper N d  data
   where (B, C, b, L) = data 
-        d = bm_calc_paper s C N
+        d = bm_calc_paper s C N L
 
-bm_calc_paper : [2*SYS_T_t]gf_t -> [SYS_T_t + 1]gf_t -> [16] -> gf_t
-bm_calc_paper s C N = last ds
-  where ds = [zero] # [ if i <= N
+bm_calc_paper : [2*SYS_T_t]gf_t -> [SYS_T_t + 1]gf_t -> [16] -> [16] -> gf_t
+bm_calc_paper s C N L = if N < 2*SYS_T then last ds else ds@0
+  where ds = [zero] # [ if i <= L
                         then d' ^ (gf_mul Ci Si)
                         else d'
                       | Ci <- C
@@ -97,52 +97,36 @@ property zf_prop N xs = zero_from N (make_zero_from N xs)
 
 // Can't seem to prove this - SMT-Lib2 produced fast but hard to get anywhere with solving.
 // "Should" be the same as calc_eq_exhaust
-calc_eq : [128]gf_t -> [65]gf_t -> [16] -> Bit
-property calc_eq s C N = bm_calc_paper s C N == bm_calc s C N
+calc_eq : [128]gf_t -> [65]gf_t -> [16] -> [16] -> Bit
+property calc_eq s C N L = (L <= N) ==> (zero_from (toInteger (L + 1)) C) ==> bm_calc_paper s C N L == bm_calc s C N
 
 // Proven using w4-yices.
 // Comment - mathsat is faster using SBV. Could we have w4-mathsat?
 // Comment - I am "exhausting over one variable" here - wish I could generalise!
-property calc_eq_exhaust s C = all (calc_eq s C) [0 .. 127]
+property calc_eq_exhaust s C = and [(calc_eq s C N N) | N <- [0 .. 127]]
 
 // Probably easier to do with rewrites? Can you prove a rewrite rule using a rewrite?
 property bm_loop_eq s N data = (all gf_valid s)  /\ (L < 0x4001) ==> bm_loop_paper s N data == bm_loop s N data
   where (B, C, b, L) = data 
 
+property logicals d N L = 
+  (xnor (2*L <= N) (N - 2*L <= 0x7fff) /\ 
+  (d != 0x0000) /\ (d < 0x8001) ) \/ (d == 0x0000)
+  <==> (mne, mle) == (mne', mle')
+    where   mne = ((d - 1) >> 15) - 1
+            mle = (((N - 2*L) >> 15) - 1) && mne
+            mne' = repeat (d != 0)
+            mle' = repeat <~ (d != 0) && (2*L <= N)
+
 // Proven using w4-yices.
-property bm_modif_eq N d data = (N < 0x8000) /\ (d < 0x8001) /\ (L < 0x4001) ==> (bm_modif N d data) == (bm_modif_paper N d data)
-  where (B, C, b, L) = data
+property bm_modif_eq N d data = 
+  (xnor (2*L <= N) (N - 2*L <= 0x7fff) /\ 
+  (d != 0x0000) /\ (d < 0x8001) ) \/ (d == 0x0000) ==> 
+  (bm_modif N d data) == (bm_modif_paper N d data)
+    where (B, C, b, L) = data
 
 // Don't expect to be able to prove this - but it is the "correctness" propertyfor a bm calculation!
 bm_works : ([2*SYS_T_t]gf_t -> [SYS_T_t + 1]gf_t) -> [2*SYS_T_t]gf_t -> Bit
 property bm_works bm_candidate s = syndromes == zero
-  where syndromes =  [bm_calc_paper s (reverse C) N | N <- [SYS_T_t .. <2*SYS_T_t]] 
+  where syndromes =  [bm_calc_paper s (reverse C) N N | N <- [SYS_T_t .. <2*SYS_T_t]] 
         C = (bm_candidate s)
-
-
-/* Some older versions. Retaining in case they have some use.
-
-bm_orig : [2*SYS_T_t]gf_t -> [SYS_T_t + 1]gf_t 
-bm_orig s = reverse (data_final.C)
-  where (B_init : [SYS_T_t + 1]gf_t) = [0, 1] # zero
-        (C_init : [SYS_T_t + 1]gf_t) = [1] # zero
-        (b_init : gf_t) = 1
-        (L_init : [16]) = 0
-        data_init = {B = B_init, C = C_init, b = b_init, L = L_init}
-        datas = [data_init] # [ bm_loop_orig s N data' | data' <- datas | N <- [0 .. <2*SYS_T_t] ]
-        data_final = last datas
-
-bm_loop_orig : [2*SYS_T_t]gf_t -> [16] -> BM_Loop_Data -> BM_Loop_Data
-bm_loop_orig s N data = {B = B_final, C = C_final, b = b_final, L = L_final}
-  where d_init = 0
-        bm_loop_i1 i d' = if i <= (min N SYS_T) then d' ^ (gf_mul ( (C)@i ) ( s@(N - i) ) ) else d'
-        ds = [d_init] # [ bm_loop_i1 i d' | d' <- ds | i <- [0 .. SYS_T_t]]
-        d = last ds
-        f = gf_frac b d
-        d_zero = d == 0
-        twoL_gt_N = 2*L > N
-        B_final = if d_zero \/ twoL_gt_N then B >> 1 else C >> 1
-        C_final = if d_zero then C else [ gf_add Ci (gf_mul f Bi) | Ci <- C | Bi <- B ]
-        b_final = if d_zero \/ twoL_gt_N then b else d
-        L_final = if d_zero \/ twoL_gt_N then L else N + 1 - L
-*/
