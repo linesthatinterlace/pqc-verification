@@ -125,12 +125,14 @@ static void syndrome(unsigned char *s, const unsigned char *pk, unsigned char *e
 	}
 }
 
-void b_func(unsigned char *b)
+unsigned char b_func(const unsigned char b_in)
 {
-  *b ^= *b >> 4;
-  *b ^= *b >> 2;
-  *b ^= *b >> 1;
-  *b &= 1;
+  unsigned char b = b_in;
+  b ^= b >> 4;
+  b ^= b >> 2;
+  b ^= b >> 1;
+  b &= 1;
+  return b;
 }
 
 void syndrome_loop(const unsigned char *e, const unsigned char *pk_ptr, const uint16_t i, unsigned char *s)
@@ -150,9 +152,7 @@ void syndrome_loop(const unsigned char *e, const unsigned char *pk_ptr, const ui
   for (j = 0; j < SYS_N/8; j++)
     b ^= row[j] & e[j];
 
-  b_func(&b);
-
-  s[ i/8 ] |= (b << (i%8));
+  s[ i/8 ] |= (b_func(b) << (i%8));
 }
 
 void syndrome_outer(unsigned char *s, const unsigned char *pk, unsigned char *e)
@@ -190,3 +190,42 @@ void encrypt(unsigned char *s, const unsigned char *pk, unsigned char *e)
 	syndrome(s, pk, e);
 }
 
+
+unsigned char bytes_bit_dotprod(const unsigned char *u, const unsigned char *v)
+{
+  unsigned char b;
+  int i;
+  b = 0;
+  for (i = 0; i < PK_ROW_BYTES; i++)
+    b ^= u[i] & v[i];
+  
+  return b_func(b);
+}
+
+unsigned char bytes_bit_mul_block(const unsigned char *u, const unsigned char *v)
+{
+	const unsigned char *u_ptr = u;
+  unsigned char b;
+  int i;
+  b = 0;
+  for (i = 0; i < 8; i++)
+  {
+    b += (bytes_bit_dotprod(u_ptr, v) << i);
+    u_ptr += PK_ROW_BYTES;
+  }
+
+  return b;
+}
+
+void syndrome_bytewise(unsigned char *s, const unsigned char *pk, unsigned char *e)
+{
+	const unsigned char *pk_ptr = pk;
+  const unsigned char *eid = e;
+  const unsigned char *epk = e + SYND_BYTES;
+	int i;
+	for (i = 0; i < SYND_BYTES; i++)
+	{
+  	s[i] = eid[i] ^ bytes_bit_mul_block(pk_ptr, epk);
+    pk_ptr += 8*PK_ROW_BYTES;
+  }
+}

@@ -405,14 +405,56 @@ let syndrome_spec = do {
 
 let b_func_spec = do {
   // Initialise variable(s).
-  (b, pb) <- ptr_to_fresh "b" (llvm_int 8);
+  b <- llvm_fresh_var "b" (llvm_int 8);
 
   // Run function.
-  llvm_execute_func [pb];
+  llvm_execute_func [llvm_term b];
 
   // Result is equivalent to Cryptol function.
-  llvm_points_to pb (llvm_term {{ b_func b }});
+  llvm_return (llvm_term {{ b_func b }});
 };
+
+let bytes_bit_dotprod_spec = do {
+  // Initialise variable(s).
+  (u, pu) <- ptr_to_fresh_readonly "u" (llvm_array 340 (llvm_int 8));
+  (v, pv) <- ptr_to_fresh_readonly "v" (llvm_array 340 (llvm_int 8));
+  // Run function.
+  llvm_execute_func [pu, pv];
+
+  // Result is equivalent to Cryptol function.
+  llvm_return (llvm_term {{ bytes_bit_dotprod u v }});
+};
+
+let bytes_bit_mul_block_spec = do {
+  // Initialise variable(s).
+  (us, pus) <- ptr_to_fresh_readonly "us" (llvm_array (eval_int {{8*PK_ROW_BYTES : [width 8*PK_ROW_BYTES_t]}}) (llvm_int 8));
+  (v, pv) <- ptr_to_fresh_readonly "v" (llvm_array (eval_int {{PK_ROW_BYTES : [width PK_ROW_BYTES_t]}}) (llvm_int 8));
+  // Run function.
+  llvm_execute_func [pus, pv];
+
+  // Result is equivalent to Cryptol function.
+  llvm_return (llvm_term {{ bytes_bit_mul_block us v }});
+};
+
+let syndrome_bytewise_spec = do {
+  // Initialise variable(s).
+  ps <- llvm_alloc (llvm_array (eval_int {{SYND_BYTES : [width SYND_BYTES_t]}}) (llvm_int 8));
+  (pk, ppk) <- ptr_to_fresh_readonly "pk" (llvm_array (eval_int {{PK_NROWS*PK_ROW_BYTES : [width PK_NROWS_t*PK_ROW_BYTES_t]}}) (llvm_int 8));
+  (e, pe) <- ptr_to_fresh_readonly "e" (llvm_array (eval_int {{SYS_N/8 : [width SYS_N_t]}}) (llvm_int 8));
+
+  // Run function.
+  llvm_execute_func [ps, ppk, pe];
+
+  // Result is equivalent to Cryptol function.
+  llvm_points_to ps (llvm_term {{ syndrome_bytewise pk e }});
+};
+/*
+
+bytes_bit_mul_block : {n} (fin n) => [8*n][8] -> [n][8] -> [8]
+bytes_bit_mul_block us v = sum  [ bytes_bit_dotprod u v << i
+                                | u <- split`{8} us 
+                                | i <- [0 .. 7]
+                                ]*/
 
 let syndrome_loop_spec = do {
   // Initialise variable(s).
@@ -510,7 +552,11 @@ let main : TopLevel () = do {
   
   //syndrome_ov <- llvm_verify linked_mod "syndrome" [] false syndrome_spec w4_z3;
   b_func_ov <- llvm_verify linked_mod "b_func" [] false b_func_spec w4_z3;
-  syndrome_loop_ov <- llvm_verify linked_mod "syndrome_loop" [b_func_ov] false syndrome_loop_spec (w4_unint_z3 ["b_func"]);
+
+  bytes_bit_dotprod_ov <- llvm_verify linked_mod "bytes_bit_dotprod" [b_func_ov] false bytes_bit_dotprod_spec (w4_unint_z3 ["b_func"]);
+  bytes_bit_mul_block_ov <- llvm_verify linked_mod "bytes_bit_mul_block" [bytes_bit_dotprod_ov] false bytes_bit_mul_block_spec (w4_unint_z3 ["bytes_bit_dotprod"]);
+  syndrome_bytewise_ov <- llvm_verify linked_mod "syndrome_bytewise" [bytes_bit_mul_block_ov] false syndrome_bytewise_spec (w4_unint_z3 ["bytes_bit_mul_block"]);
+  //syndrome_loop_ov <- llvm_verify linked_mod "syndrome_loop" [b_func_ov] false syndrome_loop_spec (w4_unint_z3 ["b_func"]);
   //syndrome_outer_ov <- llvm_verify linked_mod "syndrome" [syndrome_loop_ov] false syndrome_spec (w4_unint_z3 ["syndrome_loop"]);
   print("Done!");
 };

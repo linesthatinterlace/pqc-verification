@@ -14,7 +14,7 @@ same_mask x y = repeat (x == y)
 property same_mask_eq x y = same_mask x y == same_mask' x y
 
 b_func : {n} (fin n, n >=1) => [n] -> [n]
-b_func x = zext [foldr (^) False x]
+b_func x = if foldl' (^) False x then 1 else 0
 
 b_func' : [8] -> [8]
 b_func' b_0 = b_4
@@ -24,9 +24,6 @@ b_func' b_0 = b_4
         b_4 = b_3 && 1
 
 property b_func_eq x = b_func x == b_func' x
-
-identityMatrix : {r, c} [r][c]
-identityMatrix @ i @ j = i == j
 
 syndrome : [PK_NROWS_t*PK_ROW_BYTES_t][8] -> [SYS_N_t/8][8] -> [SYND_BYTES_t][8]
 syndrome pk e = last ss
@@ -44,10 +41,13 @@ syndrome_loop e pk_ptr i s_pre = s_post
         b = b_func (foldl' (^) zero (zipWith (&&) row' e))
         s_post = update s_pre (i/8) ((s_pre @ (i/8)) || (b << (i%8)))
 
-syndrome' : [PK_NROWS_t*PK_ROW_BYTES_t][8] 
+identityMatrix : {r, c} [r][c]
+identityMatrix @ i @ j = i == j
+
+syndrome_matrix : [PK_NROWS_t*PK_ROW_BYTES_t][8] 
             -> [SYS_N_t/8][8] 
             -> [SYND_BYTES_t][8]
-syndrome' pk e = c0
+syndrome_matrix pk e = c0
   where matrixT = [ join (map reverse row) 
                   | row <- split`{PK_NROWS_t} pk
                   ] : [PK_NROWS_t][PK_NCOLS_t]
@@ -65,32 +65,22 @@ syndrome' pk e = c0
                   ] : [PK_NROWS_t]
         c0      = map reverse (split c0_bits) : [SYND_BYTES_t][8]
 
+bytes_bit_dotprod : [PK_ROW_BYTES_t][8] -> [PK_ROW_BYTES_t][8] -> [8]
+bytes_bit_dotprod u v = b_func (foldl' (^) 0 (zipWith (&&) u v))
 
+bytes_bit_mul_block : [8*PK_ROW_BYTES_t][8] -> [PK_ROW_BYTES_t][8] -> [8]
+bytes_bit_mul_block us v = sum  [ bytes_bit_dotprod u v << i
+                                | u <- split`{8} us 
+                                | i <- [0 .. 7]
+                                ]            
 
-syndrome_eq pk e = syndrome pk e == syndrome' pk e
+syndrome_bytewise : [SYND_BYTES_t*8*PK_ROW_BYTES_t][8] -> [SYND_BYTES_t + PK_ROW_BYTES_t][8] -> [SYND_BYTES_t][8]
+syndrome_bytewise pk e = e_id_bytes ^ pk_mul_bytes
+  where (e_id_bytes, e_pk_bytes) = splitAt`{SYND_BYTES_t} e 
+        pk_row_groups = split`{SYND_BYTES_t} pk
+        pk_mul_bytes  =   [ (bytes_bit_mul_block (pk_row_group) e_pk_bytes) 
+                          | pk_row_group <- pk_row_groups 
+                          ]
 
-
-set_ith_bit : {n, m} (fin n, fin m, lg2 (8*n) < m) => [m] -> [n][8] -> [n][8]
-set_ith_bit i xs = update xs  (i >> 3) 
-                              (updateEnd  (xs @ (i >> 3)) 
-                                          (drop`{m - min 3 m} i) 
-                                          1 )
-
-syndrome_loop' : [SYS_N_t/8][8] -> [PK_ROW_BYTES_t][8] -> [16] -> [SYND_BYTES_t][8] -> [SYND_BYTES_t][8]
-syndrome_loop' e pk_ptr i s_pre = s_post
-  where id : [SYND_BYTES_t][8]
-        id @ j = (zero # [j == i/8]) << (i%8)
-        row = id # pk_ptr : [SYS_N_t/8][8] 
-        b = b_func (foldl' (^) zero [br && be | br <- row | be <- e ])
-        s_post =  if b ! 0 then set_ith_bit i s_pre else s_pre
-
-syndrome_loop_eq e pk_ptr i s_pre = (i < PK_NROWS) ==> (syndrome_loop e pk_ptr i s_pre == syndrome_loop' e pk_ptr i s_pre)
-
-
-blah : [16] -> [PK_ROW_BYTES_t][8] -> Bit
-blah i pk =(i < PK_NROWS) ==> (row' == row2)
-  where row = zero # pk : [SYS_N_t/8][8] 
-        row' = update row (i/8) ((row @ (i/8)) || (1 << (i%8)))
-        id : [SYND_BYTES_t][8]
-        id @ j = (zero # [j == i/8]) << (i%8)
-        row2 = id # pk : [SYS_N_t/8][8] 
+property syndrome_eq pk e = syndrome pk e == syndrome_bytewise pk e
+property syndrome_mat_eq pk e = syndrome_matrix pk e == syndrome_bytewise pk e
