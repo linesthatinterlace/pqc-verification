@@ -191,18 +191,18 @@ void encrypt(unsigned char *s, const unsigned char *pk, unsigned char *e)
 }
 
 
-unsigned char bytes_bit_dotprod(const unsigned char *u, const unsigned char *v)
+unsigned char bytes_bit_dotprod(const unsigned char *u, const unsigned char *v, size_t n)
 {
   unsigned char b;
   int i;
   b = 0;
-  for (i = 0; i < PK_ROW_BYTES; i++)
+  for (i = 0; i < n; i++)
     b ^= u[i] & v[i];
   
   return b_func(b);
 }
 
-unsigned char bytes_bit_mul_block(const unsigned char *u, const unsigned char *v)
+unsigned char bytes_bit_mul_block(const unsigned char *u, const unsigned char *v, size_t n)
 {
 	const unsigned char *u_ptr = u;
   unsigned char b;
@@ -210,8 +210,8 @@ unsigned char bytes_bit_mul_block(const unsigned char *u, const unsigned char *v
   b = 0;
   for (i = 0; i < 8; i++)
   {
-    b += (bytes_bit_dotprod(u_ptr, v) << i);
-    u_ptr += PK_ROW_BYTES;
+    b += (bytes_bit_dotprod(u_ptr, v, n) << i);
+    u_ptr += n;
   }
 
   return b;
@@ -225,7 +225,7 @@ void syndrome_bytewise(unsigned char *s, const unsigned char *pk, unsigned char 
 	int i;
 	for (i = 0; i < SYND_BYTES; i++)
 	{
-  	s[i] = eid[i] ^ bytes_bit_mul_block(pk_ptr, epk);
+  	s[i] = eid[i] ^ bytes_bit_mul_block(pk_ptr, epk, PK_ROW_BYTES);
     pk_ptr += 8*PK_ROW_BYTES;
   }
 }

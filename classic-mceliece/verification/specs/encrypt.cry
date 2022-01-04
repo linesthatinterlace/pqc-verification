@@ -65,20 +65,20 @@ syndrome_matrix pk e = c0
                   ] : [PK_NROWS_t]
         c0      = map reverse (split c0_bits) : [SYND_BYTES_t][8]
 
-bytes_bit_dotprod : [PK_ROW_BYTES_t][8] -> [PK_ROW_BYTES_t][8] -> [8]
+bytes_bit_dotprod : {n} (fin n) => [n][8] -> [n][8] -> [8]
 bytes_bit_dotprod u v = b_func (foldl' (^) 0 (zipWith (&&) u v))
 
-bytes_bit_mul_block : [8*PK_ROW_BYTES_t][8] -> [PK_ROW_BYTES_t][8] -> [8]
+bytes_bit_mul_block : {n} (fin n) => [8*n][8] -> [n][8] -> [8]
 bytes_bit_mul_block us v = sum  [ bytes_bit_dotprod u v << i
                                 | u <- split`{8} us 
                                 | i <- [0 .. 7]
                                 ]            
-
+                                
 syndrome_bytewise : [SYND_BYTES_t*8*PK_ROW_BYTES_t][8] -> [SYND_BYTES_t + PK_ROW_BYTES_t][8] -> [SYND_BYTES_t][8]
 syndrome_bytewise pk e = e_id_bytes ^ pk_mul_bytes
   where (e_id_bytes, e_pk_bytes) = splitAt`{SYND_BYTES_t} e 
         pk_row_groups = split`{SYND_BYTES_t} pk
-        pk_mul_bytes  =   [ (bytes_bit_mul_block (pk_row_group) e_pk_bytes) 
+        pk_mul_bytes  =   [ (bytes_bit_mul_block`{PK_ROW_BYTES_t} (pk_row_group) e_pk_bytes) 
                           | pk_row_group <- pk_row_groups 
                           ]
 

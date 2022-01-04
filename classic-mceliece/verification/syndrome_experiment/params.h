@@ -7,7 +7,6 @@
 #define SYND_BYTES ((PK_NROWS + 7)/8)
 #define TESTS 42069
 
-
 void syndrome_function(unsigned char *s, const unsigned char *pk, unsigned char *e);
 
 void test(int seed)
